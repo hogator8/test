@@ -31,5 +31,21 @@ export async function GET() {
 
   return noStoreJson({
     students: (data ?? []).map((s) => ({ ...s, sessionCount: sessionCounts[s.id] ?? 0 })),
+    // Temporary diagnostic: lets us confirm from the browser alone which
+    // deployment/commit is actually serving this response, and which
+    // Supabase project it's reading from - without needing dashboard
+    // access. Safe to expose (commit SHA and a project hostname, not a
+    // secret). Remove once the deploy-lag / wrong-project question is
+    // settled.
+    _debug: {
+      commit: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+      supabaseHost: (() => {
+        try {
+          return new URL(process.env.SUPABASE_URL ?? "").host;
+        } catch {
+          return null;
+        }
+      })(),
+    },
   });
 }
