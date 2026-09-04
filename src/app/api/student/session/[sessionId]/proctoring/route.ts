@@ -90,7 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
       const { totalScore, submittedAt } = await submitSession(supabase, session.id, true);
       return NextResponse.json({
         action: "auto_submit",
-        totalScore,
+        totalScore: session.test.show_score_to_student ? totalScore : null,
         submittedAt,
         cumulativeCount,
         cumulativeDuration,

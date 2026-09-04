@@ -17,7 +17,7 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
   if (session.status === "submitted") {
     return NextResponse.json({
       ok: true,
-      totalScore: session.total_score,
+      totalScore: session.test.show_score_to_student ? session.total_score : null,
       submittedAt: session.submitted_at,
       autoSubmitted: session.auto_submitted,
     });
@@ -25,5 +25,10 @@ export async function POST(req: NextRequest, { params }: { params: { sessionId: 
 
   const { totalScore, submittedAt } = await submitSession(supabase, session.id, false);
 
-  return NextResponse.json({ ok: true, totalScore, submittedAt, autoSubmitted: false });
+  return NextResponse.json({
+    ok: true,
+    totalScore: session.test.show_score_to_student ? totalScore : null,
+    submittedAt,
+    autoSubmitted: false,
+  });
 }

@@ -6,6 +6,10 @@ interface UpdateStudentBody {
   studentId?: string;
   name?: string;
   password?: string;
+  className?: string | null;
+  reading?: string | null;
+  nationality?: string | null;
+  gender?: string | null;
 }
 
 // Students are referenced internally by students.id (uuid) everywhere
@@ -31,7 +35,14 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: "学生ID・氏名は必須です" }, { status: 400 });
   }
 
-  const update: Record<string, string> = { student_id: studentId, name };
+  const update: Record<string, string | null> = {
+    student_id: studentId,
+    name,
+    class_name: (body.className ?? "").trim() || null,
+    reading: (body.reading ?? "").trim() || null,
+    nationality: (body.nationality ?? "").trim() || null,
+    gender: (body.gender ?? "").trim() || null,
+  };
   if (password) {
     update.password_hash = await bcrypt.hash(password, 10);
   }

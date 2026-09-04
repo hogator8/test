@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function StudentPasscodePage() {
   const [passcode, setPasscode] = useState("");
@@ -55,6 +56,9 @@ export default function StudentPasscodePage() {
           {loading ? "確認中..." : "受験を開始する"}
         </button>
       </form>
+      <Link href="/student/history" className="mt-4 text-center text-sm text-blue-600 hover:underline">
+        受験履歴を見る
+      </Link>
     </main>
   );
 }

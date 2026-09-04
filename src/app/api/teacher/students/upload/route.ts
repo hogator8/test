@@ -45,7 +45,16 @@ export async function POST(req: NextRequest) {
 
   const errors: RowError[] = [];
   const seenIds = new Map<string, number>();
-  type ParsedStudent = { studentId: string; name: string; password: string; row: number };
+  type ParsedStudent = {
+    studentId: string;
+    name: string;
+    password: string;
+    className: string | null;
+    reading: string | null;
+    nationality: string | null;
+    gender: string | null;
+    row: number;
+  };
   const parsedStudents: ParsedStudent[] = [];
 
   rows.forEach((cols, idx) => {
@@ -53,6 +62,10 @@ export async function POST(req: NextRequest) {
     const studentId = (cols[0] ?? "").trim();
     const name = (cols[1] ?? "").trim();
     const password = (cols[2] ?? "").trim();
+    const className = (cols[3] ?? "").trim();
+    const reading = (cols[4] ?? "").trim();
+    const nationality = (cols[5] ?? "").trim();
+    const gender = (cols[6] ?? "").trim();
 
     if (!studentId || !name || !password) {
       errors.push({
@@ -70,7 +83,16 @@ export async function POST(req: NextRequest) {
       return;
     }
     seenIds.set(studentId, rowNum);
-    parsedStudents.push({ studentId, name, password, row: rowNum });
+    parsedStudents.push({
+      studentId,
+      name,
+      password,
+      className: className || null,
+      reading: reading || null,
+      nationality: nationality || null,
+      gender: gender || null,
+      row: rowNum,
+    });
   });
 
   if (errors.length > 0) {
@@ -109,6 +131,10 @@ export async function POST(req: NextRequest) {
       student_id: s.studentId,
       name: s.name,
       password_hash: await bcrypt.hash(s.password, 10),
+      class_name: s.className,
+      reading: s.reading,
+      nationality: s.nationality,
+      gender: s.gender,
     }))
   );
 

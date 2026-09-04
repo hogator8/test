@@ -13,22 +13,22 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
 
   const session = await submitIfExpired(supabase, result.session);
 
-  const { data: questions, error: questionsError } = await supabase
-    .from("questions")
-    .select("id, section_number, question_number, question_text, choice_1, choice_2, choice_3, choice_4, choice_5")
-    .eq("test_id", session.test_id)
-    .order("section_number", { ascending: true })
-    .order("question_number", { ascending: true });
+  const [questionsResult, answersResult] = await Promise.all([
+    supabase
+      .from("questions")
+      .select("id, section_number, question_number, question_text, choice_1, choice_2, choice_3, choice_4, choice_5")
+      .eq("test_id", session.test_id)
+      .order("section_number", { ascending: true })
+      .order("question_number", { ascending: true }),
+    supabase.from("answers").select("question_id, selected_choice").eq("session_id", session.id),
+  ]);
 
+  const { data: questions, error: questionsError } = questionsResult;
   if (questionsError) {
     return NextResponse.json({ error: questionsError.message }, { status: 500 });
   }
 
-  const { data: answers, error: answersError } = await supabase
-    .from("answers")
-    .select("question_id, selected_choice")
-    .eq("session_id", session.id);
-
+  const { data: answers, error: answersError } = answersResult;
   if (answersError) {
     return NextResponse.json({ error: answersError.message }, { status: 500 });
   }
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
       status: session.status,
       startedAt: session.started_at,
       submittedAt: session.submitted_at,
-      totalScore: session.total_score,
+      totalScore: session.test.show_score_to_student ? session.total_score : null,
       autoSubmitted: session.auto_submitted,
     },
     test: {
@@ -77,6 +77,8 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
       leaveDurationThresholdSeconds: session.test.leave_duration_threshold_seconds,
       leaveAction: session.test.leave_action,
       leaveWarningMessage: session.test.leave_warning_message,
+      startScreenMessage: session.test.start_screen_message,
+      showScoreToStudent: session.test.show_score_to_student,
       // pause_release_pin is intentionally never sent to the client - only
       // the resume API verifies it server-side.
     },

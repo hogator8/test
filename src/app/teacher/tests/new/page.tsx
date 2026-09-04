@@ -23,6 +23,8 @@ export default function NewTestPage() {
   const [leaveAction, setLeaveAction] = useState("warning_only");
   const [leaveWarningMessage, setLeaveWarningMessage] = useState("");
   const [pauseReleasePin, setPauseReleasePin] = useState("");
+  const [startScreenMessage, setStartScreenMessage] = useState("");
+  const [showScoreToStudent, setShowScoreToStudent] = useState(true);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -53,6 +55,8 @@ export default function NewTestPage() {
       formData.append("leaveAction", leaveAction);
       formData.append("leaveWarningMessage", leaveWarningMessage);
       formData.append("pauseReleasePin", pauseReleasePin);
+      formData.append("startScreenMessage", startScreenMessage);
+      formData.append("showScoreToStudent", String(showScoreToStudent));
       formData.append("file", file);
 
       const res = await fetch("/api/teacher/tests", { method: "POST", body: formData });
@@ -93,6 +97,28 @@ export default function NewTestPage() {
               onChange={(e) => setPasscode(e.target.value)}
               required
             />
+          </label>
+        </section>
+
+        <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
+          <h2 className="font-bold text-slate-800">受験開始画面・得点表示</h2>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            案内文言(任意・未入力の場合はデフォルト文言を表示)
+            <textarea
+              className="rounded-md border border-slate-300 px-3 py-2"
+              rows={2}
+              value={startScreenMessage}
+              onChange={(e) => setStartScreenMessage(e.target.value)}
+              placeholder="受験中に他のアプリやタブを開くと離脱として記録されます。対応する端末では全画面表示になります。"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={showScoreToStudent}
+              onChange={(e) => setShowScoreToStudent(e.target.checked)}
+            />
+            提出後、学生に得点を表示する
           </label>
         </section>
 

@@ -6,6 +6,10 @@ interface Student {
   id: string;
   student_id: string;
   name: string;
+  class_name: string | null;
+  reading: string | null;
+  nationality: string | null;
+  gender: string | null;
   created_at: string;
   sessionCount: number;
 }
@@ -106,7 +110,7 @@ export default function TeacherStudentsPage() {
       <section className="rounded-lg bg-white p-6 shadow">
         <h2 className="mb-4 text-lg font-bold text-slate-800">学生CSV一括登録</h2>
         <p className="mb-4 text-sm text-slate-600">
-          フォーマット: 1行目はヘッダー行「学生ID,氏名,パスワード」、2行目以降にデータを入力してください(UTF-8
+          フォーマット: 1行目はヘッダー行「学生ID,氏名,パスワード,クラス名,読み方,国籍,性別」、2行目以降にデータを入力してください(末尾4列は空欄可・UTF-8
           BOM付き推奨)
         </p>
         <form onSubmit={handleUpload} className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -151,6 +155,10 @@ export default function TeacherStudentsPage() {
                 <tr className="border-b border-slate-200 text-slate-500">
                   <th className="py-2 pr-4">学生ID</th>
                   <th className="py-2 pr-4">氏名</th>
+                  <th className="py-2 pr-4">クラス名</th>
+                  <th className="py-2 pr-4">読み方</th>
+                  <th className="py-2 pr-4">国籍</th>
+                  <th className="py-2 pr-4">性別</th>
                   <th className="py-2 pr-4">受験記録</th>
                   <th className="py-2 pr-4"></th>
                 </tr>
@@ -160,6 +168,10 @@ export default function TeacherStudentsPage() {
                   <tr key={s.id} className="border-b border-slate-100">
                     <td className="py-2 pr-4 notranslate">{s.student_id}</td>
                     <td className="py-2 pr-4 notranslate">{s.name}</td>
+                    <td className="py-2 pr-4 notranslate">{s.class_name ?? "-"}</td>
+                    <td className="py-2 pr-4 notranslate">{s.reading ?? "-"}</td>
+                    <td className="py-2 pr-4 notranslate">{s.nationality ?? "-"}</td>
+                    <td className="py-2 pr-4 notranslate">{s.gender ?? "-"}</td>
                     <td className="py-2 pr-4">{s.sessionCount}件</td>
                     <td className="py-2 pr-4">
                       <div className="flex items-center gap-3">
@@ -212,6 +224,10 @@ function EditStudentDialog({
   const [studentId, setStudentId] = useState(student.student_id);
   const [name, setName] = useState(student.name);
   const [password, setPassword] = useState("");
+  const [className, setClassName] = useState(student.class_name ?? "");
+  const [reading, setReading] = useState(student.reading ?? "");
+  const [nationality, setNationality] = useState(student.nationality ?? "");
+  const [gender, setGender] = useState(student.gender ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -223,7 +239,15 @@ function EditStudentDialog({
       const res = await fetch(`/api/teacher/students/${student.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, name, password: password || undefined }),
+        body: JSON.stringify({
+          studentId,
+          name,
+          password: password || undefined,
+          className,
+          reading,
+          nationality,
+          gender,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -269,6 +293,38 @@ function EditStudentDialog({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="未入力の場合は変更しません"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            クラス名(任意)
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={className}
+              onChange={(e) => setClassName(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            読み方(任意)
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={reading}
+              onChange={(e) => setReading(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            国籍(任意)
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={nationality}
+              onChange={(e) => setNationality(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            性別(任意)
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
             />
           </label>
           {error && <p className="text-sm text-red-600">{error}</p>}

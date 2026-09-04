@@ -7,70 +7,68 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const supabase = getSupabaseAdmin();
   const testId = params.id;
 
-  const { data: test, error: testError } = await supabase
-    .from("tests")
-    .select("*")
-    .eq("id", testId)
-    .single();
+  // The four queries below are all independent of one another - run them
+  // concurrently instead of one-by-one to avoid a slow request waterfall.
+  // (Sessions exclude soft-deleted rows so a teacher-deleted record drops
+  // out of this list - see supabase/migration_v4a.sql.)
+  const [testResult, questionCountResult, sessionsResult, totalStudentsResult] = await Promise.all([
+    supabase.from("tests").select("*").eq("id", testId).single(),
+    supabase.from("questions").select("id", { count: "exact", head: true }).eq("test_id", testId),
+    supabase
+      .from("test_sessions")
+      .select("id, student_id, status, started_at, submitted_at, total_score, auto_submitted")
+      .eq("test_id", testId)
+      .is("deleted_at", null)
+      .order("started_at", { ascending: true }),
+    supabase.from("students").select("id", { count: "exact", head: true }),
+  ]);
 
+  const { data: test, error: testError } = testResult;
   if (testError || !test) {
     return NextResponse.json({ error: "テストが見つかりません" }, { status: 404 });
   }
 
-  const { count: questionCount } = await supabase
-    .from("questions")
-    .select("id", { count: "exact", head: true })
-    .eq("test_id", testId);
-
-  // Fetch test_sessions and students as two separate, unconditional queries
-  // (rather than a single embedded/joined select) so that every session for
-  // this test is guaranteed to show up here regardless of its status or
-  // whether it has any answers - a join-based query previously caused
-  // sessions with no answers or with auto_submitted=true to go missing from
-  // this list even though they were present in the exported CSV.
-  const { data: sessions, error: sessionsError } = await supabase
-    .from("test_sessions")
-    .select("id, student_id, status, started_at, submitted_at, total_score, auto_submitted")
-    .eq("test_id", testId)
-    .order("started_at", { ascending: true });
-
+  const { data: sessions, error: sessionsError } = sessionsResult;
   if (sessionsError) {
     return NextResponse.json({ error: sessionsError.message }, { status: 500 });
   }
 
+  const questionCount = questionCountResult.count;
+  const totalStudents = totalStudentsResult.count;
+
+  // Fetch students and proctoring logs as two separate, unconditional
+  // queries (rather than a single embedded/joined select) so that every
+  // session for this test is guaranteed to show up here regardless of its
+  // status or whether it has any answers - a join-based query previously
+  // caused sessions with no answers or with auto_submitted=true to go
+  // missing from this list even though they were present in the exported
+  // CSV. These two queries are independent of each other, so run them
+  // concurrently too.
   const studentIds = Array.from(new Set((sessions ?? []).map((s) => s.student_id)));
+  const sessionIds = (sessions ?? []).map((s) => s.id);
+
+  const [studentsResult, logsResult] = await Promise.all([
+    studentIds.length > 0
+      ? supabase.from("students").select("id, student_id, name").in("id", studentIds)
+      : Promise.resolve({ data: [] as { id: string; student_id: string; name: string }[] }),
+    sessionIds.length > 0
+      ? supabase.from("proctoring_logs").select("session_id, duration_seconds").in("session_id", sessionIds)
+      : Promise.resolve({ data: [] as { session_id: string; duration_seconds: number | null }[] }),
+  ]);
+
   const studentsById: Record<string, { student_id: string; name: string }> = {};
-  if (studentIds.length > 0) {
-    const { data: students } = await supabase
-      .from("students")
-      .select("id, student_id, name")
-      .in("id", studentIds);
-    for (const st of students ?? []) {
-      studentsById[st.id] = { student_id: st.student_id, name: st.name };
-    }
+  for (const st of studentsResult.data ?? []) {
+    studentsById[st.id] = { student_id: st.student_id, name: st.name };
   }
 
-  const sessionIds = (sessions ?? []).map((s) => s.id);
   const leaveStats: Record<string, { count: number; durationSeconds: number }> = {};
   for (const id of sessionIds) leaveStats[id] = { count: 0, durationSeconds: 0 };
-
-  if (sessionIds.length > 0) {
-    const { data: logs } = await supabase
-      .from("proctoring_logs")
-      .select("session_id, duration_seconds")
-      .in("session_id", sessionIds);
-
-    for (const log of logs ?? []) {
-      if (log.duration_seconds !== null && log.duration_seconds >= test.leave_grace_seconds) {
-        leaveStats[log.session_id].count += 1;
-        leaveStats[log.session_id].durationSeconds += log.duration_seconds;
-      }
+  for (const log of logsResult.data ?? []) {
+    if (log.duration_seconds !== null && log.duration_seconds >= test.leave_grace_seconds) {
+      leaveStats[log.session_id].count += 1;
+      leaveStats[log.session_id].durationSeconds += log.duration_seconds;
     }
   }
-
-  const { count: totalStudents } = await supabase
-    .from("students")
-    .select("id", { count: "exact", head: true });
 
   return NextResponse.json({
     test,
@@ -103,6 +101,8 @@ interface UpdateTestBody {
   leaveAction?: string;
   leaveWarningMessage?: string | null;
   pauseReleasePin?: string | null;
+  startScreenMessage?: string | null;
+  showScoreToStudent?: boolean;
 }
 
 // Editing a test only changes how future leave-detection / time-limit
@@ -125,6 +125,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const leaveDetectionEnabled = Boolean(body.leaveDetectionEnabled);
   const leaveWarningMessage = (body.leaveWarningMessage ?? "").trim();
   const pauseReleasePin = (body.pauseReleasePin ?? "").trim();
+  const startScreenMessage = (body.startScreenMessage ?? "").trim();
+  const showScoreToStudent = body.showScoreToStudent !== false;
 
   if (!title) {
     return NextResponse.json({ error: "テスト名を入力してください" }, { status: 400 });
@@ -192,6 +194,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       leave_action: leaveAction,
       leave_warning_message: leaveWarningMessage || null,
       pause_release_pin: pauseReleasePin || null,
+      start_screen_message: startScreenMessage || null,
+      show_score_to_student: showScoreToStudent,
     })
     .eq("id", testId)
     .select("id")

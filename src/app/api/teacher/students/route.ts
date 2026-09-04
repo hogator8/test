@@ -5,7 +5,7 @@ export async function GET() {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("students")
-    .select("id, student_id, name, created_at")
+    .select("id, student_id, name, class_name, reading, nationality, gender, created_at")
     .order("student_id", { ascending: true });
 
   if (error) {

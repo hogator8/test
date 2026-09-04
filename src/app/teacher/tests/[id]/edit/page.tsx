@@ -15,6 +15,8 @@ interface TestDetail {
   leave_action: string;
   leave_warning_message: string | null;
   pause_release_pin: string | null;
+  start_screen_message: string | null;
+  show_score_to_student: boolean;
 }
 
 export default function EditTestPage() {
@@ -35,6 +37,8 @@ export default function EditTestPage() {
   const [leaveAction, setLeaveAction] = useState("warning_only");
   const [leaveWarningMessage, setLeaveWarningMessage] = useState("");
   const [pauseReleasePin, setPauseReleasePin] = useState("");
+  const [startScreenMessage, setStartScreenMessage] = useState("");
+  const [showScoreToStudent, setShowScoreToStudent] = useState(true);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -64,6 +68,8 @@ export default function EditTestPage() {
         setLeaveAction(test.leave_action);
         setLeaveWarningMessage(test.leave_warning_message ?? "");
         setPauseReleasePin(test.pause_release_pin ?? "");
+        setStartScreenMessage(test.start_screen_message ?? "");
+        setShowScoreToStudent(test.show_score_to_student);
       })
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
@@ -90,6 +96,8 @@ export default function EditTestPage() {
           leaveAction,
           leaveWarningMessage,
           pauseReleasePin,
+          startScreenMessage,
+          showScoreToStudent,
         }),
       });
       const data = await res.json();
@@ -134,6 +142,28 @@ export default function EditTestPage() {
               onChange={(e) => setPasscode(e.target.value)}
               required
             />
+          </label>
+        </section>
+
+        <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
+          <h2 className="font-bold text-slate-800">受験開始画面・得点表示</h2>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            案内文言(任意・未入力の場合はデフォルト文言を表示)
+            <textarea
+              className="rounded-md border border-slate-300 px-3 py-2"
+              rows={2}
+              value={startScreenMessage}
+              onChange={(e) => setStartScreenMessage(e.target.value)}
+              placeholder="受験中に他のアプリやタブを開くと離脱として記録されます。対応する端末では全画面表示になります。"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={showScoreToStudent}
+              onChange={(e) => setShowScoreToStudent(e.target.checked)}
+            />
+            提出後、学生に得点を表示する
           </label>
         </section>
 

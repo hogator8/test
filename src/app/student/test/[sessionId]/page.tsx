@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 
 type SessionStatus = "in_progress" | "paused" | "submitted";
 
@@ -32,10 +33,14 @@ interface TestInfo {
   leaveDurationThresholdSeconds: number | null;
   leaveAction: "warning_only" | "auto_pause" | "auto_submit";
   leaveWarningMessage: string | null;
+  startScreenMessage: string | null;
+  showScoreToStudent: boolean;
 }
 
 const DEFAULT_WARNING_MESSAGE =
   "画面から離れたことが検知されました。受験を継続するには画面内に留まってください。";
+const DEFAULT_START_MESSAGE =
+  "受験中に他のアプリやタブを開くと離脱として記録されます。対応する端末では全画面表示になります。";
 
 interface SessionData {
   session: {
@@ -78,6 +83,7 @@ export default function StudentTestPage() {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [entered, setEntered] = useState(false);
   const [warningOpen, setWarningOpen] = useState(false);
+  const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
   const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [finalResult, setFinalResult] = useState<{ totalScore: number | null; autoSubmitted: boolean } | null>(
     null
@@ -260,8 +266,8 @@ export default function StudentTestPage() {
     }
   }
 
-  async function handleManualSubmit() {
-    if (!confirm("提出すると解答を変更できません。提出しますか？")) return;
+  async function handleConfirmSubmit() {
+    setConfirmSubmitOpen(false);
     await doSubmit(false);
   }
 
@@ -294,6 +300,12 @@ export default function StudentTestPage() {
         {finalResult?.autoSubmitted && (
           <p className="text-sm text-amber-600">制限時間超過または離脱により自動提出されました</p>
         )}
+        <Link
+          href="/student/passcode"
+          className="mt-2 rounded-lg bg-blue-600 px-8 py-3 text-lg font-semibold text-white shadow hover:bg-blue-700"
+        >
+          HOME
+        </Link>
       </main>
     );
   }
@@ -311,22 +323,20 @@ export default function StudentTestPage() {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-4 text-center">
         <h1 className="text-xl font-bold text-slate-800 notranslate">{data.test.title}</h1>
-        <p className="text-slate-600">
-          受験中に他のアプリやタブを開くと離脱として記録されます。対応する端末では全画面表示になります。
-        </p>
+        <p className="text-slate-600">{data.test.startScreenMessage || DEFAULT_START_MESSAGE}</p>
         <button
           onClick={handleEnter}
           className="rounded-lg bg-blue-600 px-8 py-4 text-lg font-semibold text-white shadow hover:bg-blue-700"
         >
-          受験を開始する
+          START
         </button>
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-8 pb-28">
-      <header className="mb-6 flex items-center justify-between">
+    <main className="mx-auto max-w-2xl px-4 pb-28 pt-4">
+      <header className="sticky top-0 z-30 -mx-4 mb-6 flex items-center justify-between bg-slate-50/95 px-4 py-3 shadow-sm backdrop-blur">
         <h1 className="text-lg font-bold text-slate-800 notranslate">{data.test.title}</h1>
         {remainingSeconds !== null && (
           <span
@@ -373,14 +383,40 @@ export default function StudentTestPage() {
       <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white p-4">
         <div className="mx-auto flex max-w-2xl justify-end">
           <button
-            onClick={handleManualSubmit}
+            onClick={() => setConfirmSubmitOpen(true)}
             disabled={submitting}
             className="rounded-md bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {submitting ? "提出中..." : "提出する"}
+            {submitting ? "提出中... / Submitting..." : "SEND"}
           </button>
         </div>
       </div>
+
+      {confirmSubmitOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="max-w-sm rounded-lg bg-white p-6 text-center shadow-xl">
+            <p className="mb-6 text-slate-800">
+              提出すると回答を変更できません。提出しますか？
+              <br />
+              Once submitted, you cannot change your answers. Submit now?
+            </p>
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setConfirmSubmitOpen(false)}
+                className="rounded-md border border-slate-300 px-5 py-2 font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                CANCEL
+              </button>
+              <button
+                onClick={handleConfirmSubmit}
+                className="rounded-md bg-blue-600 px-5 py-2 font-semibold text-white hover:bg-blue-700"
+              >
+                SEND
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {warningOpen && (
         <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-red-600 p-6 text-center">
@@ -405,7 +441,7 @@ export default function StudentTestPage() {
             onClick={() => setWarningOpen(false)}
             className="rounded-md bg-white px-6 py-3 font-bold text-red-600 shadow hover:bg-red-50"
           >
-            閉じる
+            CLOSE
           </button>
         </div>
       )}

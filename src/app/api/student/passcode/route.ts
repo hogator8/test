@@ -34,11 +34,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "パスコードが正しくありません" }, { status: 404 });
   }
 
+  // Only an active (non-deleted) session counts: if a teacher soft-deleted a
+  // previous session for this student/test pair, this lookup finds nothing
+  // and a fresh session is created below, allowing a re-take.
   const { data: existingSession, error: sessionError } = await supabase
     .from("test_sessions")
     .select("id, status")
     .eq("student_id", payload.studentDbId)
     .eq("test_id", test.id)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (sessionError) {
