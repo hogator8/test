@@ -16,13 +16,39 @@ interface TestSummary {
 export default function TeacherTestsPage() {
   const [tests, setTests] = useState<TestSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/teacher/tests")
+  function loadTests() {
+    setLoading(true);
+    return fetch("/api/teacher/tests")
       .then((res) => res.json())
       .then((data) => setTests(data.tests ?? []))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    loadTests();
   }, []);
+
+  async function handleDelete(t: TestSummary) {
+    const confirmed = confirm(
+      `「${t.title}」を削除しますか?\n受験者数: ${t.sessions}名\nこのテストに紐づく問題・受験セッション・解答・離脱ログもすべて削除され、元に戻せません。`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(t.id);
+    try {
+      const res = await fetch(`/api/teacher/tests/${t.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error ?? "削除に失敗しました");
+        return;
+      }
+      await loadTests();
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -65,9 +91,21 @@ export default function TeacherTestsPage() {
                     <td className="py-2 pr-4">{t.questions}</td>
                     <td className="py-2 pr-4">{t.sessions}</td>
                     <td className="py-2 pr-4">
-                      <Link href={`/teacher/tests/${t.id}`} className="text-blue-600 hover:underline">
-                        詳細
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <Link href={`/teacher/tests/${t.id}`} className="text-blue-600 hover:underline">
+                          詳細
+                        </Link>
+                        <Link href={`/teacher/tests/${t.id}/edit`} className="text-blue-600 hover:underline">
+                          編集
+                        </Link>
+                        <button
+                          onClick={() => handleDelete(t)}
+                          disabled={deletingId === t.id}
+                          className="text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          {deletingId === t.id ? "削除中..." : "削除"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

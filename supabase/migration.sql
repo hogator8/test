@@ -10,6 +10,10 @@ create table students (
   student_id text unique not null,      -- ログインID
   name text not null,
   password_hash text not null,          -- bcryptでハッシュ化して保存
+  class_name text,                      -- クラス名(任意)
+  reading text,                         -- ふりがな(任意)
+  nationality text,                     -- 国籍(任意)
+  gender text,                          -- 性別(任意)
   created_at timestamptz default now()
 );
 
@@ -24,6 +28,10 @@ create table tests (
   leave_count_threshold integer,        -- 累計離脱回数のしきい値(nullなら回数では発動しない)
   leave_duration_threshold_seconds integer, -- 累計離脱時間のしきい値(nullなら時間では発動しない)
   leave_action text not null default 'warning_only', -- 'warning_only' | 'auto_pause' | 'auto_submit'
+  leave_warning_message text,           -- 離脱警告モーダルに表示する文言(nullならデフォルト文言)
+  pause_release_pin text,               -- auto_pause解除用の4桁PIN(教員が端末で直接入力する運用)
+  start_screen_message text,            -- パスコード入力後の案内文言(nullならデフォルト文言)
+  show_score_to_student boolean not null default true, -- falseなら提出後・受験履歴で得点/正誤を学生に見せない
   created_at timestamptz default now()
 );
 
@@ -47,16 +55,23 @@ create table questions (
 -- 受験セッション(1学生が1テストを受験するごとに1レコード)
 create table test_sessions (
   id uuid primary key default gen_random_uuid(),
-  student_id uuid not null references students(id),
-  test_id uuid not null references tests(id),
+  student_id uuid not null references students(id) on delete cascade,
+  test_id uuid not null references tests(id) on delete cascade,
   status text not null default 'in_progress', -- 'in_progress' | 'paused' | 'submitted'
   started_at timestamptz not null default now(),
   submitted_at timestamptz,
   total_score integer,
   auto_submitted boolean not null default false,
-  created_at timestamptz default now(),
-  unique (student_id, test_id) -- 同一学生は同一テストを1回のみ受験可能とする
+  deleted_at timestamptz,               -- 教員による論理削除(再受験を許可する。履歴・CSVエクスポートには残る)
+  created_at timestamptz default now()
 );
+
+-- 同一学生は同一テストを(削除されていないセッションとしては)1回のみ受験可能とする。
+-- 論理削除されたセッションは対象外にすることで、削除後の再受験を新規セッションとして
+-- 開始できるようにする。
+create unique index test_sessions_active_unique
+  on test_sessions (student_id, test_id)
+  where deleted_at is null;
 
 -- 解答
 create table answers (
@@ -89,6 +104,8 @@ create table session_resume_logs (
 
 create index idx_questions_test_id on questions(test_id);
 create index idx_test_sessions_test_id on test_sessions(test_id);
+create index idx_test_sessions_student_id on test_sessions(student_id);
 create index idx_answers_session_id on answers(session_id);
+create index idx_answers_question_id on answers(question_id);
 create index idx_proctoring_logs_session_id on proctoring_logs(session_id);
 create index idx_session_resume_logs_session_id on session_resume_logs(session_id);

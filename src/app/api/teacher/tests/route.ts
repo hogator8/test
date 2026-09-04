@@ -29,11 +29,13 @@ export async function GET() {
   for (const id of testIds) counts[id] = { questions: 0, sessions: 0 };
 
   if (testIds.length > 0) {
-    const { data: questions } = await supabase.from("questions").select("test_id").in("test_id", testIds);
+    const [{ data: questions }, { data: sessions }] = await Promise.all([
+      supabase.from("questions").select("test_id").in("test_id", testIds),
+      supabase.from("test_sessions").select("test_id").in("test_id", testIds).is("deleted_at", null),
+    ]);
     for (const q of questions ?? []) {
       counts[q.test_id].questions += 1;
     }
-    const { data: sessions } = await supabase.from("test_sessions").select("test_id").in("test_id", testIds);
     for (const s of sessions ?? []) {
       counts[s.test_id].sessions += 1;
     }
@@ -56,6 +58,10 @@ export async function POST(req: NextRequest) {
   const leaveCountThresholdRaw = String(formData.get("leaveCountThreshold") ?? "").trim();
   const leaveDurationThresholdRaw = String(formData.get("leaveDurationThresholdSeconds") ?? "").trim();
   const leaveAction = String(formData.get("leaveAction") ?? "warning_only").trim();
+  const leaveWarningMessage = String(formData.get("leaveWarningMessage") ?? "").trim();
+  const pauseReleasePin = String(formData.get("pauseReleasePin") ?? "").trim();
+  const startScreenMessage = String(formData.get("startScreenMessage") ?? "").trim();
+  const showScoreToStudent = formData.get("showScoreToStudent") !== "false";
   const file = formData.get("file");
 
   if (!title) {
@@ -101,6 +107,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "累計離脱時間のしきい値が不正です" }, { status: 400 });
     }
     leaveDurationThreshold = n;
+  }
+
+  if (leaveDetectionEnabled && leaveAction === "auto_pause" && !/^\d{4}$/.test(pauseReleasePin)) {
+    return NextResponse.json(
+      { error: "自動一時停止を選択する場合、解除用の4桁PIN(数字)を設定してください" },
+      { status: 400 }
+    );
   }
 
   const rawText = stripBom(await file.text());
@@ -224,6 +237,10 @@ export async function POST(req: NextRequest) {
       leave_count_threshold: leaveCountThreshold,
       leave_duration_threshold_seconds: leaveDurationThreshold,
       leave_action: leaveAction,
+      leave_warning_message: leaveWarningMessage || null,
+      pause_release_pin: pauseReleasePin || null,
+      start_screen_message: startScreenMessage || null,
+      show_score_to_student: showScoreToStudent,
     })
     .select("id")
     .single();

@@ -1,16 +1,30 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 
-interface RowError {
-  row: number;
-  message: string;
+interface TestDetail {
+  id: string;
+  title: string;
+  passcode: string;
+  time_limit_minutes: number | null;
+  leave_detection_enabled: boolean;
+  leave_grace_seconds: number;
+  leave_count_threshold: number | null;
+  leave_duration_threshold_seconds: number | null;
+  leave_action: string;
+  leave_warning_message: string | null;
+  pause_release_pin: string | null;
+  start_screen_message: string | null;
+  show_score_to_student: boolean;
 }
 
-export default function NewTestPage() {
+export default function EditTestPage() {
+  const params = useParams<{ id: string }>();
   const router = useRouter();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
   const [passcode, setPasscode] = useState("");
@@ -28,45 +42,70 @@ export default function NewTestPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [rowErrors, setRowErrors] = useState<RowError[]>([]);
+
+  useEffect(() => {
+    fetch(`/api/teacher/tests/${params.id}`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "テストの読み込みに失敗しました");
+        return data.test as TestDetail;
+      })
+      .then((test) => {
+        setTitle(test.title);
+        setPasscode(test.passcode);
+        setTimeLimitEnabled(test.time_limit_minutes !== null);
+        setTimeLimitMinutes(test.time_limit_minutes ? String(test.time_limit_minutes) : "30");
+        setLeaveDetectionEnabled(test.leave_detection_enabled);
+        setLeaveGraceSeconds(String(test.leave_grace_seconds));
+        setLeaveCountThreshold(
+          test.leave_count_threshold !== null ? String(test.leave_count_threshold) : ""
+        );
+        setLeaveDurationThreshold(
+          test.leave_duration_threshold_seconds !== null
+            ? String(test.leave_duration_threshold_seconds)
+            : ""
+        );
+        setLeaveAction(test.leave_action);
+        setLeaveWarningMessage(test.leave_warning_message ?? "");
+        setPauseReleasePin(test.pause_release_pin ?? "");
+        setStartScreenMessage(test.start_screen_message ?? "");
+        setShowScoreToStudent(test.show_score_to_student);
+      })
+      .catch((e) => setLoadError(e.message))
+      .finally(() => setLoading(false));
+  }, [params.id]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
-      setErrorMsg("問題CSVファイルを選択してください");
-      return;
-    }
-
     setSubmitting(true);
     setErrorMsg(null);
-    setRowErrors([]);
 
     try {
-      const formData = new FormData();
-      formData.append("title", title);
-      formData.append("passcode", passcode);
-      formData.append("timeLimitEnabled", String(timeLimitEnabled));
-      formData.append("timeLimitMinutes", timeLimitMinutes);
-      formData.append("leaveDetectionEnabled", String(leaveDetectionEnabled));
-      formData.append("leaveGraceSeconds", leaveGraceSeconds);
-      formData.append("leaveCountThreshold", leaveCountThreshold);
-      formData.append("leaveDurationThresholdSeconds", leaveDurationThreshold);
-      formData.append("leaveAction", leaveAction);
-      formData.append("leaveWarningMessage", leaveWarningMessage);
-      formData.append("pauseReleasePin", pauseReleasePin);
-      formData.append("startScreenMessage", startScreenMessage);
-      formData.append("showScoreToStudent", String(showScoreToStudent));
-      formData.append("file", file);
-
-      const res = await fetch("/api/teacher/tests", { method: "POST", body: formData });
+      const res = await fetch(`/api/teacher/tests/${params.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          passcode,
+          timeLimitEnabled,
+          timeLimitMinutes,
+          leaveDetectionEnabled,
+          leaveGraceSeconds,
+          leaveCountThreshold,
+          leaveDurationThresholdSeconds: leaveDurationThreshold,
+          leaveAction,
+          leaveWarningMessage,
+          pauseReleasePin,
+          startScreenMessage,
+          showScoreToStudent,
+        }),
+      });
       const data = await res.json();
       if (!res.ok) {
-        setErrorMsg(data.error ?? "作成に失敗しました");
-        setRowErrors(data.errors ?? []);
+        setErrorMsg(data.error ?? "更新に失敗しました");
         return;
       }
-      router.push(`/teacher/tests/${data.testId}`);
+      router.push(`/teacher/tests/${params.id}`);
     } catch {
       setErrorMsg("通信エラーが発生しました");
     } finally {
@@ -74,9 +113,15 @@ export default function NewTestPage() {
     }
   }
 
+  if (loading) return <p className="text-slate-500">読み込み中...</p>;
+  if (loadError) return <p className="text-red-600">{loadError}</p>;
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <h1 className="text-xl font-bold text-slate-800">新規テスト作成</h1>
+      <h1 className="text-xl font-bold text-slate-800">テスト設定を編集</h1>
+      <p className="text-sm text-slate-600">
+        問題データ(問題文・選択肢・正答)自体は編集できません。問題内容を変更したい場合は、テストを削除して作り直してください。
+      </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-6">
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
@@ -235,37 +280,18 @@ export default function NewTestPage() {
           )}
         </section>
 
-        <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
-          <h2 className="font-bold text-slate-800">問題CSVアップロード</h2>
-          <p className="text-sm text-slate-600">
-            フォーマット: 1行目はヘッダー行「セクション番号,問題番号,問題文,選択肢1,選択肢2,選択肢3,選択肢4,選択肢5,正答」、
-            2行目以降にデータを入力してください(選択肢3〜5は空欄可・正答は選択肢の列番号)
-          </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,text/csv"
-            className="block w-full text-sm text-slate-700 file:mr-4 file:rounded-md file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
-          />
-        </section>
+        <p className="text-sm text-slate-500">
+          既に受験セッションが存在する場合、ここでの変更は今後の判定にのみ反映され、過去に記録された離脱ログ等は書き換えられません。
+        </p>
 
         {errorMsg && <p className="text-sm font-medium text-red-600">{errorMsg}</p>}
-        {rowErrors.length > 0 && (
-          <ul className="space-y-1 rounded-md bg-red-50 p-3 text-sm text-red-700">
-            {rowErrors.map((e, i) => (
-              <li key={i}>
-                {e.row}行目: {e.message}
-              </li>
-            ))}
-          </ul>
-        )}
 
         <button
           type="submit"
           disabled={submitting}
           className="rounded-md bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {submitting ? "作成中..." : "テストを作成する"}
+          {submitting ? "保存中..." : "変更を保存する"}
         </button>
       </form>
     </div>
