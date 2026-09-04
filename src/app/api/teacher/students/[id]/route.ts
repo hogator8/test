@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { noStoreJson } from "@/lib/http";
+
+// Never statically cache this route - it must always hit Supabase for
+// live data (Next.js Route Handlers can otherwise be cached by default).
+export const dynamic = "force-dynamic";
 
 interface UpdateStudentBody {
   studentId?: string;
@@ -51,7 +56,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .from("students")
     .update(update)
     .eq("id", studentDbId)
-    .select("id")
+    .select("id, student_id, name, class_name, reading, nationality, gender, created_at")
     .maybeSingle();
 
   if (error) {
@@ -64,7 +69,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     return NextResponse.json({ error: "学生が見つかりません" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true });
+  // Return the row as Postgres now has it (not just {ok: true}) so the
+  // caller can update its local state directly instead of depending on a
+  // second GET round-trip to reflect the change.
+  return noStoreJson({ ok: true, student: updated });
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { verifyStudentToken, STUDENT_COOKIE } from "@/lib/auth";
+import { noStoreJson } from "@/lib/http";
+
+// Never statically cache this route - it must always hit Supabase for
+// live data (Next.js Route Handlers can otherwise be cached by default).
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const payload = await verifyStudentToken(req.cookies.get(STUDENT_COOKIE)?.value);
@@ -22,7 +27,7 @@ export async function GET(req: NextRequest) {
 
   const testIds = Array.from(new Set((sessions ?? []).map((s) => s.test_id)));
   if (testIds.length === 0) {
-    return NextResponse.json({ history: [] });
+    return noStoreJson({ history: [] });
   }
 
   const [{ data: tests }, { data: questions }] = await Promise.all([
@@ -53,5 +58,5 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  return NextResponse.json({ history });
+  return noStoreJson({ history });
 }

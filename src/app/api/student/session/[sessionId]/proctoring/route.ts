@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { verifyStudentToken, STUDENT_COOKIE } from "@/lib/auth";
 import { loadSessionForStudent, submitIfExpired, submitSession } from "@/lib/testSession";
 
+// Never statically cache this route - it must always hit Supabase for
+// live data (Next.js Route Handlers can otherwise be cached by default).
+export const dynamic = "force-dynamic";
+
 const EVENT_TYPES = new Set(["background", "fullscreen_exit"]);
 
 export async function POST(req: NextRequest, { params }: { params: { sessionId: string } }) {

@@ -3,6 +3,10 @@ import Papa from "papaparse";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+// Never statically cache this route - it must always hit Supabase for
+// live data (Next.js Route Handlers can otherwise be cached by default).
+export const dynamic = "force-dynamic";
+
 interface RowError {
   row: number;
   message: string;
@@ -138,10 +142,16 @@ export async function POST(req: NextRequest) {
     }))
   );
 
-  const { error: insertError } = await supabase.from("students").insert(insertRows);
+  const { data: inserted, error: insertError } = await supabase
+    .from("students")
+    .insert(insertRows)
+    .select("id, student_id, name, class_name, reading, nationality, gender, created_at");
   if (insertError) {
     return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, count: insertRows.length });
+  // Return the rows Postgres actually committed (not just a count) so the
+  // caller can add them to its local list directly instead of depending on
+  // a second GET round-trip to reflect them.
+  return NextResponse.json({ ok: true, count: insertRows.length, students: inserted ?? [] });
 }

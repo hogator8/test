@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { noStoreJson } from "@/lib/http";
+
+// Never statically cache this route - it must always hit Supabase for
+// live data (Next.js Route Handlers can otherwise be cached by default).
+export const dynamic = "force-dynamic";
 
 interface RowError {
   row: number;
@@ -41,7 +46,7 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({
+  return noStoreJson({
     tests: (tests ?? []).map((t) => ({ ...t, ...counts[t.id] })),
   });
 }
