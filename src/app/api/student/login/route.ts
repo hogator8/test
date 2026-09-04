@@ -3,6 +3,10 @@ import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { signStudentToken, STUDENT_COOKIE } from "@/lib/auth";
 
+// Never statically cache this route - it must always hit Supabase for
+// live data (Next.js Route Handlers can otherwise be cached by default).
+export const dynamic = "force-dynamic";
+
 export async function POST(req: NextRequest) {
   let body: { studentId?: string; password?: string };
   try {

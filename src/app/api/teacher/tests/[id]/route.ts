@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { noStoreJson } from "@/lib/http";
+
+// Never statically cache this route - it must always hit Supabase for
+// live data (Next.js Route Handlers can otherwise be cached by default).
+export const dynamic = "force-dynamic";
 
 const LEAVE_ACTIONS = new Set(["warning_only", "auto_pause", "auto_submit"]);
 
@@ -70,7 +75,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     }
   }
 
-  return NextResponse.json({
+  return noStoreJson({
     test,
     totalQuestions: questionCount ?? 0,
     totalStudents: totalStudents ?? 0,

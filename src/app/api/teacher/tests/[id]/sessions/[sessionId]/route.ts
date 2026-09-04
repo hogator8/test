@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+// Never statically cache this route - it must always hit Supabase for
+// live data (Next.js Route Handlers can otherwise be cached by default).
+export const dynamic = "force-dynamic";
+
 // Soft delete only: answers/proctoring_logs/session_resume_logs are left
 // untouched as history, and the row still appears in CSV exports (with a
 // 削除フラグ). Marking deleted_at also frees up the partial unique index on

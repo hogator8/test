@@ -73,6 +73,12 @@ export default function TeacherStudentsPage() {
       }
       setSuccessMsg(`${data.count}件の学生を登録しました`);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      // Add the rows Postgres just confirmed immediately, rather than
+      // waiting on a second GET to reflect them.
+      const newStudents = (data.students ?? []) as Student[];
+      if (newStudents.length > 0) {
+        setStudents((prev) => [...prev, ...newStudents.map((s) => ({ ...s, sessionCount: 0 }))]);
+      }
       await loadStudents();
     } catch {
       setErrorMsg("通信エラーが発生しました");
@@ -202,8 +208,11 @@ export default function TeacherStudentsPage() {
         <EditStudentDialog
           student={editingStudent}
           onClose={() => setEditingStudent(null)}
-          onSaved={async () => {
+          onSaved={async (updated) => {
             setEditingStudent(null);
+            // Apply the row Postgres just confirmed immediately, rather than
+            // waiting on a second GET to reflect it.
+            setStudents((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
             await loadStudents();
           }}
         />
@@ -219,7 +228,7 @@ function EditStudentDialog({
 }: {
   student: Student;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (updated: Student) => void;
 }) {
   const [studentId, setStudentId] = useState(student.student_id);
   const [name, setName] = useState(student.name);
@@ -254,7 +263,7 @@ function EditStudentDialog({
         setError(data.error ?? "更新に失敗しました");
         return;
       }
-      onSaved();
+      onSaved(data.student);
     } catch {
       setError("通信エラーが発生しました");
     } finally {
