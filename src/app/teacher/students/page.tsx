@@ -21,9 +21,6 @@ interface RowError {
 
 export default function TeacherStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
-  const [debugInfo, setDebugInfo] = useState<{ commit: string | null; supabaseHost: string | null } | null>(
-    null
-  );
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -39,7 +36,6 @@ export default function TeacherStudentsPage() {
       const res = await fetch("/api/teacher/students");
       const data = await res.json();
       setStudents(data.students ?? []);
-      setDebugInfo(data._debug ?? null);
     } finally {
       setLoading(false);
     }
@@ -207,13 +203,6 @@ export default function TeacherStudentsPage() {
           </div>
         )}
       </section>
-
-      {debugInfo && (
-        <p className="text-xs text-slate-400">
-          build: {debugInfo.commit ? debugInfo.commit.slice(0, 7) : "不明"} / db:{" "}
-          {debugInfo.supabaseHost ?? "不明"}
-        </p>
-      )}
 
       {editingStudent && (
         <EditStudentDialog
