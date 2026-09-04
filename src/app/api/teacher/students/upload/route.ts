@@ -32,9 +32,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const rows = parsed.data;
-  if (rows.length === 0) {
+  const allRows = parsed.data;
+  if (allRows.length === 0) {
     return NextResponse.json({ error: "CSVにデータがありません" }, { status: 400 });
+  }
+
+  // The first row is always a header row (学生ID,氏名,パスワード) and is skipped.
+  const rows = allRows.slice(1);
+  if (rows.length === 0) {
+    return NextResponse.json({ error: "CSVにヘッダー行以外のデータがありません" }, { status: 400 });
   }
 
   const errors: RowError[] = [];
@@ -43,7 +49,7 @@ export async function POST(req: NextRequest) {
   const parsedStudents: ParsedStudent[] = [];
 
   rows.forEach((cols, idx) => {
-    const rowNum = idx + 1;
+    const rowNum = idx + 2; // +1 for 1-indexing, +1 more for the skipped header row
     const studentId = (cols[0] ?? "").trim();
     const name = (cols[1] ?? "").trim();
     const password = (cols[2] ?? "").trim();

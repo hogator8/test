@@ -112,9 +112,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const rows = parsed.data;
-  if (rows.length === 0) {
+  const allRows = parsed.data;
+  if (allRows.length === 0) {
     return NextResponse.json({ error: "問題CSVにデータがありません" }, { status: 400 });
+  }
+
+  // The first row is always a header row (セクション番号,問題番号,...) and is skipped.
+  const rows = allRows.slice(1);
+  if (rows.length === 0) {
+    return NextResponse.json({ error: "問題CSVにヘッダー行以外のデータがありません" }, { status: 400 });
   }
 
   const errors: RowError[] = [];
@@ -134,7 +140,7 @@ export async function POST(req: NextRequest) {
   const parsedQuestions: ParsedQuestion[] = [];
 
   rows.forEach((cols, idx) => {
-    const rowNum = idx + 1;
+    const rowNum = idx + 2; // +1 for 1-indexing, +1 more for the skipped header row
     const sectionRaw = (cols[0] ?? "").trim();
     const questionRaw = (cols[1] ?? "").trim();
     const questionText = (cols[2] ?? "").trim();
