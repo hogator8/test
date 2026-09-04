@@ -79,7 +79,8 @@ export default function TeacherStudentsPage() {
       <section className="rounded-lg bg-white p-6 shadow">
         <h2 className="mb-4 text-lg font-bold text-slate-800">学生CSV一括登録</h2>
         <p className="mb-4 text-sm text-slate-600">
-          フォーマット: 1行につき「学生ID,氏名,パスワード」(ヘッダー行なし・UTF-8 BOM付き推奨)
+          フォーマット: 1行目はヘッダー行「学生ID,氏名,パスワード」、2行目以降にデータを入力してください(UTF-8
+          BOM付き推奨)
         </p>
         <form onSubmit={handleUpload} className="flex flex-col gap-4 sm:flex-row sm:items-end">
           <input

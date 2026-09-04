@@ -182,8 +182,8 @@ export default function NewTestPage() {
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
           <h2 className="font-bold text-slate-800">問題CSVアップロード</h2>
           <p className="text-sm text-slate-600">
-            フォーマット: セクション番号,問題番号,問題文,選択肢1,選択肢2,選択肢3,選択肢4,選択肢5,正答
-            (ヘッダー行なし・選択肢3〜5は空欄可・正答は選択肢の列番号)
+            フォーマット: 1行目はヘッダー行「セクション番号,問題番号,問題文,選択肢1,選択肢2,選択肢3,選択肢4,選択肢5,正答」、
+            2行目以降にデータを入力してください(選択肢3〜5は空欄可・正答は選択肢の列番号)
           </p>
           <input
             ref={fileInputRef}
