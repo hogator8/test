@@ -20,6 +20,18 @@ export function getSupabaseAdmin(): SupabaseClient {
 
   cachedClient = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      // supabase-js issues its requests via plain fetch() under the hood.
+      // Inside Next.js (App Router), the global fetch is patched to cache
+      // GET requests by default (the "Data Cache") - and that cache
+      // persists across deployments. Without this override, every query
+      // to the same PostgREST endpoint+params (e.g. the students list)
+      // keeps returning whatever it first returned, forever, no matter
+      // what `export const dynamic` or response Cache-Control headers say
+      // on our own routes - those control different caching layers and
+      // don't touch this one.
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
   });
   return cachedClient;
 }
