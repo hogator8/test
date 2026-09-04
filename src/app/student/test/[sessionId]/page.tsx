@@ -49,12 +49,19 @@ interface SessionData {
   serverNow: string;
 }
 
-function supportsFullscreen(): boolean {
-  return (
-    typeof document !== "undefined" &&
-    document.fullscreenEnabled === true &&
-    typeof document.documentElement.requestFullscreen === "function"
-  );
+/**
+ * Best-effort fullscreen request. iPhone Safari (and iOS Chrome, which uses
+ * the same engine) does not support the Fullscreen API on arbitrary elements
+ * - requestFullscreen may be missing entirely or reject/throw. Either way we
+ * swallow the failure silently and let the exam continue; fullscreen is an
+ * extra deterrent on devices that support it, never a requirement.
+ */
+async function tryRequestFullscreen(): Promise<void> {
+  try {
+    await document.documentElement.requestFullscreen?.();
+  } catch {
+    // ignore - visibilitychange-based detection remains active regardless.
+  }
 }
 
 export default function StudentTestPage() {
@@ -150,9 +157,11 @@ export default function StudentTestPage() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [entered, data?.test.leaveDetectionEnabled, reportLeaveEvent]);
 
-  // Fullscreen-exit detection (skipped entirely on browsers without Fullscreen API support).
+  // Fullscreen-exit detection. On devices without Fullscreen API support
+  // (iPhone Safari/Chrome) this event simply never fires - that's expected,
+  // not a bug; visibilitychange above remains the primary defense there.
   useEffect(() => {
-    if (!entered || !data?.test.leaveDetectionEnabled || !supportsFullscreen()) return;
+    if (!entered || !data?.test.leaveDetectionEnabled) return;
 
     function handleFullscreenChange() {
       const now = Date.now();
@@ -207,25 +216,12 @@ export default function StudentTestPage() {
   }, [data, status, doSubmit]);
 
   async function handleEnter() {
-    if (supportsFullscreen()) {
-      try {
-        await document.documentElement.requestFullscreen();
-      } catch {
-        // iOS Safari and some contexts silently reject this - the exam
-        // still proceeds using visibilitychange-based detection.
-      }
-    }
+    await tryRequestFullscreen();
     setEntered(true);
   }
 
   async function handleResume() {
-    if (supportsFullscreen()) {
-      try {
-        await document.documentElement.requestFullscreen();
-      } catch {
-        // ignore
-      }
-    }
+    await tryRequestFullscreen();
     const res = await fetch(`/api/student/session/${sessionId}/resume`, { method: "POST" });
     const json = await res.json();
     if (res.ok) {
@@ -295,7 +291,7 @@ export default function StudentTestPage() {
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-4 text-center">
         <h1 className="text-xl font-bold text-slate-800 notranslate">{data.test.title}</h1>
         <p className="text-slate-600">
-          受験を開始すると全画面表示になります。他のアプリやタブを開くと離脱として記録されます。
+          受験中に他のアプリやタブを開くと離脱として記録されます。対応する端末では全画面表示になります。
         </p>
         <button
           onClick={status === "paused" ? handleResume : handleEnter}
