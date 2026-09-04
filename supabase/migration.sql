@@ -24,6 +24,8 @@ create table tests (
   leave_count_threshold integer,        -- 累計離脱回数のしきい値(nullなら回数では発動しない)
   leave_duration_threshold_seconds integer, -- 累計離脱時間のしきい値(nullなら時間では発動しない)
   leave_action text not null default 'warning_only', -- 'warning_only' | 'auto_pause' | 'auto_submit'
+  leave_warning_message text,           -- 離脱警告モーダルに表示する文言(nullならデフォルト文言)
+  pause_release_pin text,               -- auto_pause解除用の4桁PIN(教員が端末で直接入力する運用)
   created_at timestamptz default now()
 );
 
@@ -47,8 +49,8 @@ create table questions (
 -- 受験セッション(1学生が1テストを受験するごとに1レコード)
 create table test_sessions (
   id uuid primary key default gen_random_uuid(),
-  student_id uuid not null references students(id),
-  test_id uuid not null references tests(id),
+  student_id uuid not null references students(id) on delete cascade,
+  test_id uuid not null references tests(id) on delete cascade,
   status text not null default 'in_progress', -- 'in_progress' | 'paused' | 'submitted'
   started_at timestamptz not null default now(),
   submitted_at timestamptz,

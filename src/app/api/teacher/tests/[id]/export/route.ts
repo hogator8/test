@@ -28,13 +28,28 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     return NextResponse.json({ error: questionsError.message }, { status: 500 });
   }
 
+  // Two separate queries (not an embedded join) so every session for this
+  // test is included regardless of status or answer count - see the same
+  // fix in the sibling list route for why.
   const { data: sessions, error: sessionsError } = await supabase
     .from("test_sessions")
-    .select("id, student_id, status, started_at, submitted_at, total_score, auto_submitted, students(id, student_id, name)")
+    .select("id, student_id, status, started_at, submitted_at, total_score, auto_submitted")
     .eq("test_id", testId);
 
   if (sessionsError) {
     return NextResponse.json({ error: sessionsError.message }, { status: 500 });
+  }
+
+  const studentIds = Array.from(new Set((sessions ?? []).map((s) => s.student_id)));
+  const studentsById: Record<string, { id: string; student_id: string; name: string }> = {};
+  if (studentIds.length > 0) {
+    const { data: students } = await supabase
+      .from("students")
+      .select("id, student_id, name")
+      .in("id", studentIds);
+    for (const st of students ?? []) {
+      studentsById[st.id] = st;
+    }
   }
 
   const sessionIds = (sessions ?? []).map((s) => s.id);
@@ -96,9 +111,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   const rows: (string | number | null)[][] = [header];
 
-  const sessionsWithStudent = (sessions ?? []).filter((s: any) => s.students);
-
-  for (const s of sessionsWithStudent as any[]) {
+  for (const s of sessions ?? []) {
+    const student = studentsById[s.student_id];
     const answers = answersBySession[s.id] ?? {};
     const questionCells: (string | number | null)[] = [];
     for (const q of questions ?? []) {
@@ -112,8 +126,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     }
 
     rows.push([
-      s.students.student_id,
-      s.students.name,
+      student?.student_id ?? "",
+      student?.name ?? "",
       s.started_at,
       s.submitted_at ?? "",
       statusLabel[s.status] ?? s.status,
@@ -127,7 +141,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
 
   if (includeAll) {
     const { data: allStudents } = await supabase.from("students").select("id, student_id, name");
-    const testedStudentDbIds = new Set(sessionsWithStudent.map((s: any) => s.students.id));
+    const testedStudentDbIds = new Set((sessions ?? []).map((s) => s.student_id));
     const questionCellsEmpty: (string | number | null)[] = [];
     for (const _q of questions ?? []) questionCellsEmpty.push("", "");
 

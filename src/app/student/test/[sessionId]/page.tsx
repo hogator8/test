@@ -31,7 +31,11 @@ interface TestInfo {
   leaveCountThreshold: number | null;
   leaveDurationThresholdSeconds: number | null;
   leaveAction: "warning_only" | "auto_pause" | "auto_submit";
+  leaveWarningMessage: string | null;
 }
+
+const DEFAULT_WARNING_MESSAGE =
+  "画面から離れたことが検知されました。受験を継続するには画面内に留まってください。";
 
 interface SessionData {
   session: {
@@ -220,17 +224,25 @@ export default function StudentTestPage() {
     setEntered(true);
   }
 
-  async function handleResume() {
-    await tryRequestFullscreen();
-    const res = await fetch(`/api/student/session/${sessionId}/resume`, { method: "POST" });
+  async function handleResumeWithPin(pin: string): Promise<string | null> {
+    const res = await fetch(`/api/student/session/${sessionId}/resume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin }),
+    });
     const json = await res.json();
     if (res.ok) {
       setStatus("in_progress");
       setEntered(true);
-    } else if (json.submitted) {
+      await tryRequestFullscreen();
+      return null;
+    }
+    if (json.submitted) {
       setStatus("submitted");
       setFinalResult({ totalScore: json.totalScore, autoSubmitted: true });
+      return null;
     }
+    return json.error ?? "PINが正しくありません";
   }
 
   async function handleSelect(questionId: string, choiceIndex: number) {
@@ -286,6 +298,15 @@ export default function StudentTestPage() {
     );
   }
 
+  if (status === "paused") {
+    return (
+      <main className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-slate-900 px-4 text-center">
+        <h1 className="text-xl font-bold text-white notranslate">{data.test.title}</h1>
+        <PinPad onSubmit={handleResumeWithPin} />
+      </main>
+    );
+  }
+
   if (!entered) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-4 text-center">
@@ -294,10 +315,10 @@ export default function StudentTestPage() {
           受験中に他のアプリやタブを開くと離脱として記録されます。対応する端末では全画面表示になります。
         </p>
         <button
-          onClick={status === "paused" ? handleResume : handleEnter}
+          onClick={handleEnter}
           className="rounded-lg bg-blue-600 px-8 py-4 text-lg font-semibold text-white shadow hover:bg-blue-700"
         >
-          {status === "paused" ? "再開する" : "受験を開始する"}
+          受験を開始する
         </button>
       </main>
     );
@@ -362,37 +383,115 @@ export default function StudentTestPage() {
       </div>
 
       {warningOpen && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-w-sm rounded-lg bg-white p-6 text-center shadow-xl">
-            <p className="mb-4 font-semibold text-red-600">
-              画面から離れたことが検知されました。受験を継続するには画面内に留まってください。
-            </p>
-            <button
-              onClick={() => setWarningOpen(false)}
-              className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700"
-            >
-              閉じる
-            </button>
-          </div>
-        </div>
-      )}
-
-      {status === "paused" && (
-        <div className="fixed inset-0 flex items-center justify-center bg-black/70 p-4">
-          <div className="max-w-sm rounded-lg bg-white p-6 text-center shadow-xl">
-            <p className="mb-4 font-semibold text-red-600">
-              離脱が検知されたため一時停止しました。再開するにはボタンを押してください。
-            </p>
-            <button
-              onClick={handleResume}
-              className="rounded-md bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700"
-            >
-              再開する
-            </button>
-          </div>
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-red-600 p-6 text-center">
+          <svg
+            className="h-16 w-16 text-white"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth={2}
+            stroke="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z"
+            />
+          </svg>
+          <p className="max-w-md text-xl font-bold leading-relaxed text-white">
+            {data.test.leaveWarningMessage || DEFAULT_WARNING_MESSAGE}
+          </p>
+          <button
+            onClick={() => setWarningOpen(false)}
+            className="rounded-md bg-white px-6 py-3 font-bold text-red-600 shadow hover:bg-red-50"
+          >
+            閉じる
+          </button>
         </div>
       )}
     </main>
+  );
+}
+
+function PinPad({ onSubmit }: { onSubmit: (pin: string) => Promise<string | null> }) {
+  const [digits, setDigits] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+
+  async function submitPin(pin: string) {
+    setVerifying(true);
+    setError(null);
+    try {
+      const errorMessage = await onSubmit(pin);
+      if (errorMessage) {
+        setError(errorMessage);
+        setDigits("");
+      }
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  function pressDigit(d: string) {
+    if (verifying || digits.length >= 4) return;
+    const next = digits + d;
+    setDigits(next);
+    setError(null);
+    if (next.length === 4) {
+      submitPin(next);
+    }
+  }
+
+  function pressBackspace() {
+    if (verifying) return;
+    setDigits((prev) => prev.slice(0, -1));
+    setError(null);
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-6">
+      <div className="flex gap-3" aria-label="PIN入力状況">
+        {[0, 1, 2, 3].map((i) => (
+          <span
+            key={i}
+            className={`h-4 w-4 rounded-full border-2 border-white ${
+              i < digits.length ? "bg-white" : "bg-transparent"
+            }`}
+          />
+        ))}
+      </div>
+      {error && <p className="text-sm font-semibold text-red-400">{error}</p>}
+      <div className="grid grid-cols-3 gap-3">
+        {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+          <button
+            key={d}
+            type="button"
+            onClick={() => pressDigit(d)}
+            disabled={verifying}
+            className="h-16 w-16 rounded-full bg-white/10 text-2xl font-semibold text-white hover:bg-white/20 disabled:opacity-50"
+          >
+            {d}
+          </button>
+        ))}
+        <div />
+        <button
+          type="button"
+          onClick={() => pressDigit("0")}
+          disabled={verifying}
+          className="h-16 w-16 rounded-full bg-white/10 text-2xl font-semibold text-white hover:bg-white/20 disabled:opacity-50"
+        >
+          0
+        </button>
+        <button
+          type="button"
+          onClick={pressBackspace}
+          disabled={verifying}
+          className="h-16 w-16 rounded-full bg-white/10 text-lg font-semibold text-white hover:bg-white/20 disabled:opacity-50"
+        >
+          ⌫
+        </button>
+      </div>
+    </div>
   );
 }
 

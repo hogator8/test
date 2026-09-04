@@ -56,6 +56,8 @@ export async function POST(req: NextRequest) {
   const leaveCountThresholdRaw = String(formData.get("leaveCountThreshold") ?? "").trim();
   const leaveDurationThresholdRaw = String(formData.get("leaveDurationThresholdSeconds") ?? "").trim();
   const leaveAction = String(formData.get("leaveAction") ?? "warning_only").trim();
+  const leaveWarningMessage = String(formData.get("leaveWarningMessage") ?? "").trim();
+  const pauseReleasePin = String(formData.get("pauseReleasePin") ?? "").trim();
   const file = formData.get("file");
 
   if (!title) {
@@ -101,6 +103,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "累計離脱時間のしきい値が不正です" }, { status: 400 });
     }
     leaveDurationThreshold = n;
+  }
+
+  if (leaveDetectionEnabled && leaveAction === "auto_pause" && !/^\d{4}$/.test(pauseReleasePin)) {
+    return NextResponse.json(
+      { error: "自動一時停止を選択する場合、解除用の4桁PIN(数字)を設定してください" },
+      { status: 400 }
+    );
   }
 
   const rawText = stripBom(await file.text());
@@ -224,6 +233,8 @@ export async function POST(req: NextRequest) {
       leave_count_threshold: leaveCountThreshold,
       leave_duration_threshold_seconds: leaveDurationThreshold,
       leave_action: leaveAction,
+      leave_warning_message: leaveWarningMessage || null,
+      pause_release_pin: pauseReleasePin || null,
     })
     .select("id")
     .single();

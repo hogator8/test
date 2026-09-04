@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
+const LEAVE_ACTIONS = new Set(["warning_only", "auto_pause", "auto_submit"]);
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = getSupabaseAdmin();
   const testId = params.id;
@@ -20,14 +22,32 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .select("id", { count: "exact", head: true })
     .eq("test_id", testId);
 
+  // Fetch test_sessions and students as two separate, unconditional queries
+  // (rather than a single embedded/joined select) so that every session for
+  // this test is guaranteed to show up here regardless of its status or
+  // whether it has any answers - a join-based query previously caused
+  // sessions with no answers or with auto_submitted=true to go missing from
+  // this list even though they were present in the exported CSV.
   const { data: sessions, error: sessionsError } = await supabase
     .from("test_sessions")
-    .select("id, student_id, status, started_at, submitted_at, total_score, auto_submitted, students(student_id, name)")
+    .select("id, student_id, status, started_at, submitted_at, total_score, auto_submitted")
     .eq("test_id", testId)
     .order("started_at", { ascending: true });
 
   if (sessionsError) {
     return NextResponse.json({ error: sessionsError.message }, { status: 500 });
+  }
+
+  const studentIds = Array.from(new Set((sessions ?? []).map((s) => s.student_id)));
+  const studentsById: Record<string, { student_id: string; name: string }> = {};
+  if (studentIds.length > 0) {
+    const { data: students } = await supabase
+      .from("students")
+      .select("id, student_id, name")
+      .in("id", studentIds);
+    for (const st of students ?? []) {
+      studentsById[st.id] = { student_id: st.student_id, name: st.name };
+    }
   }
 
   const sessionIds = (sessions ?? []).map((s) => s.id);
@@ -56,10 +76,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     test,
     totalQuestions: questionCount ?? 0,
     totalStudents: totalStudents ?? 0,
-    sessions: (sessions ?? []).map((s: any) => ({
+    sessions: (sessions ?? []).map((s) => ({
       id: s.id,
-      studentId: s.students?.student_id ?? "",
-      studentName: s.students?.name ?? "",
+      studentId: studentsById[s.student_id]?.student_id ?? "",
+      studentName: studentsById[s.student_id]?.name ?? "",
       status: s.status,
       startedAt: s.started_at,
       submittedAt: s.submitted_at,
@@ -69,4 +89,145 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       leaveDurationSeconds: leaveStats[s.id]?.durationSeconds ?? 0,
     })),
   });
+}
+
+interface UpdateTestBody {
+  title?: string;
+  passcode?: string;
+  timeLimitEnabled?: boolean;
+  timeLimitMinutes?: string | number | null;
+  leaveDetectionEnabled?: boolean;
+  leaveGraceSeconds?: string | number;
+  leaveCountThreshold?: string | number | null;
+  leaveDurationThresholdSeconds?: string | number | null;
+  leaveAction?: string;
+  leaveWarningMessage?: string | null;
+  pauseReleasePin?: string | null;
+}
+
+// Editing a test only changes how future leave-detection / time-limit
+// judgements are made; it never rewrites proctoring_logs, session_resume_logs
+// or answers that were already recorded under the old settings.
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = getSupabaseAdmin();
+  const testId = params.id;
+
+  let body: UpdateTestBody;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "リクエストが不正です" }, { status: 400 });
+  }
+
+  const title = (body.title ?? "").trim();
+  const passcode = (body.passcode ?? "").trim();
+  const leaveAction = (body.leaveAction ?? "warning_only").trim();
+  const leaveDetectionEnabled = Boolean(body.leaveDetectionEnabled);
+  const leaveWarningMessage = (body.leaveWarningMessage ?? "").trim();
+  const pauseReleasePin = (body.pauseReleasePin ?? "").trim();
+
+  if (!title) {
+    return NextResponse.json({ error: "テスト名を入力してください" }, { status: 400 });
+  }
+  if (!passcode) {
+    return NextResponse.json({ error: "パスコードを入力してください" }, { status: 400 });
+  }
+  if (!LEAVE_ACTIONS.has(leaveAction)) {
+    return NextResponse.json({ error: "離脱時の挙動が不正です" }, { status: 400 });
+  }
+
+  let timeLimitMinutes: number | null = null;
+  if (body.timeLimitEnabled) {
+    const n = Number(body.timeLimitMinutes);
+    if (!Number.isInteger(n) || n <= 0) {
+      return NextResponse.json({ error: "制限時間(分)は正の整数で入力してください" }, { status: 400 });
+    }
+    timeLimitMinutes = n;
+  }
+
+  const leaveGraceSeconds = Number(body.leaveGraceSeconds ?? 3);
+  if (!Number.isInteger(leaveGraceSeconds) || leaveGraceSeconds < 0) {
+    return NextResponse.json({ error: "許容秒数は0以上の整数で入力してください" }, { status: 400 });
+  }
+
+  let leaveCountThreshold: number | null = null;
+  if (body.leaveCountThreshold !== null && body.leaveCountThreshold !== undefined && body.leaveCountThreshold !== "") {
+    const n = Number(body.leaveCountThreshold);
+    if (!Number.isInteger(n) || n < 0) {
+      return NextResponse.json({ error: "累計離脱回数のしきい値が不正です" }, { status: 400 });
+    }
+    leaveCountThreshold = n;
+  }
+
+  let leaveDurationThreshold: number | null = null;
+  if (
+    body.leaveDurationThresholdSeconds !== null &&
+    body.leaveDurationThresholdSeconds !== undefined &&
+    body.leaveDurationThresholdSeconds !== ""
+  ) {
+    const n = Number(body.leaveDurationThresholdSeconds);
+    if (!Number.isInteger(n) || n < 0) {
+      return NextResponse.json({ error: "累計離脱時間のしきい値が不正です" }, { status: 400 });
+    }
+    leaveDurationThreshold = n;
+  }
+
+  if (leaveDetectionEnabled && leaveAction === "auto_pause" && !/^\d{4}$/.test(pauseReleasePin)) {
+    return NextResponse.json(
+      { error: "自動一時停止を選択する場合、解除用の4桁PIN(数字)を設定してください" },
+      { status: 400 }
+    );
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("tests")
+    .update({
+      title,
+      passcode,
+      time_limit_minutes: timeLimitMinutes,
+      leave_detection_enabled: leaveDetectionEnabled,
+      leave_grace_seconds: leaveGraceSeconds,
+      leave_count_threshold: leaveCountThreshold,
+      leave_duration_threshold_seconds: leaveDurationThreshold,
+      leave_action: leaveAction,
+      leave_warning_message: leaveWarningMessage || null,
+      pause_release_pin: pauseReleasePin || null,
+    })
+    .eq("id", testId)
+    .select("id")
+    .maybeSingle();
+
+  if (updateError) {
+    if (updateError.code === "23505") {
+      return NextResponse.json({ error: "このパスコードは既に使用されています" }, { status: 400 });
+    }
+    return NextResponse.json({ error: updateError.message }, { status: 500 });
+  }
+  if (!updated) {
+    return NextResponse.json({ error: "テストが見つかりません" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const supabase = getSupabaseAdmin();
+  const testId = params.id;
+
+  // questions and test_sessions both cascade-delete from tests (and
+  // answers/proctoring_logs/session_resume_logs cascade further from
+  // test_sessions), so a single delete here removes everything.
+  const { error, count } = await supabase
+    .from("tests")
+    .delete({ count: "exact" })
+    .eq("id", testId);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  if (!count) {
+    return NextResponse.json({ error: "テストが見つかりません" }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true });
 }

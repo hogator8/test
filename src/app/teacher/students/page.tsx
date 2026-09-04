@@ -7,6 +7,7 @@ interface Student {
   student_id: string;
   name: string;
   created_at: string;
+  sessionCount: number;
 }
 
 interface RowError {
@@ -22,6 +23,8 @@ export default function TeacherStudentsPage() {
   const [rowErrors, setRowErrors] = useState<RowError[]>([]);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   async function loadStudents() {
     setLoading(true);
@@ -71,6 +74,30 @@ export default function TeacherStudentsPage() {
       setErrorMsg("通信エラーが発生しました");
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleDelete(s: Student) {
+    const warning =
+      s.sessionCount > 0
+        ? `この学生には受験記録が${s.sessionCount}件あります。削除するとこの学生の受験記録・回答・離脱ログもすべて削除されます。`
+        : "";
+    const confirmed = confirm(
+      `学生「${s.name}」(${s.student_id})を削除しますか?\n${warning}\nこの操作は元に戻せません。`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(s.id);
+    try {
+      const res = await fetch(`/api/teacher/students/${s.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error ?? "削除に失敗しました");
+        return;
+      }
+      await loadStudents();
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -124,13 +151,33 @@ export default function TeacherStudentsPage() {
                 <tr className="border-b border-slate-200 text-slate-500">
                   <th className="py-2 pr-4">学生ID</th>
                   <th className="py-2 pr-4">氏名</th>
+                  <th className="py-2 pr-4">受験記録</th>
+                  <th className="py-2 pr-4"></th>
                 </tr>
               </thead>
               <tbody>
                 {students.map((s) => (
-                  <tr key={s.id} className="border-b border-slate-100 notranslate">
-                    <td className="py-2 pr-4">{s.student_id}</td>
-                    <td className="py-2 pr-4">{s.name}</td>
+                  <tr key={s.id} className="border-b border-slate-100">
+                    <td className="py-2 pr-4 notranslate">{s.student_id}</td>
+                    <td className="py-2 pr-4 notranslate">{s.name}</td>
+                    <td className="py-2 pr-4">{s.sessionCount}件</td>
+                    <td className="py-2 pr-4">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setEditingStudent(s)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          編集
+                        </button>
+                        <button
+                          onClick={() => handleDelete(s)}
+                          disabled={deletingId === s.id}
+                          className="text-red-600 hover:underline disabled:opacity-50"
+                        >
+                          {deletingId === s.id ? "削除中..." : "削除"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -138,6 +185,111 @@ export default function TeacherStudentsPage() {
           </div>
         )}
       </section>
+
+      {editingStudent && (
+        <EditStudentDialog
+          student={editingStudent}
+          onClose={() => setEditingStudent(null)}
+          onSaved={async () => {
+            setEditingStudent(null);
+            await loadStudents();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EditStudentDialog({
+  student,
+  onClose,
+  onSaved,
+}: {
+  student: Student;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [studentId, setStudentId] = useState(student.student_id);
+  const [name, setName] = useState(student.name);
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/teacher/students/${student.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, name, password: password || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "更新に失敗しました");
+        return;
+      }
+      onSaved();
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+        <h3 className="mb-4 text-lg font-bold text-slate-800">学生情報を編集</h3>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            学生ID
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              required
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            氏名
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            新しいパスワード(変更する場合のみ入力)
+            <input
+              type="password"
+              className="rounded-md border border-slate-300 px-3 py-2"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="未入力の場合は変更しません"
+            />
+          </label>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              キャンセル
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? "保存中..." : "保存する"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

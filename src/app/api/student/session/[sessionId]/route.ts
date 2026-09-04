@@ -76,6 +76,9 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
       leaveCountThreshold: session.test.leave_count_threshold,
       leaveDurationThresholdSeconds: session.test.leave_duration_threshold_seconds,
       leaveAction: session.test.leave_action,
+      leaveWarningMessage: session.test.leave_warning_message,
+      // pause_release_pin is intentionally never sent to the client - only
+      // the resume API verifies it server-side.
     },
     sections,
     answers: answerMap,

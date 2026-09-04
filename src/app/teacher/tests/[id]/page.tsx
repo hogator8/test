@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 
 interface SessionRow {
   id: string;
@@ -42,12 +43,14 @@ const leaveActionLabel: Record<string, string> = {
 
 export default function TeacherTestDetailPage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const [test, setTest] = useState<TestDetail | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [totalStudents, setTotalStudents] = useState(0);
   const [loading, setLoading] = useState(true);
   const [includeAll, setIncludeAll] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetch(`/api/teacher/tests/${params.id}`)
@@ -61,14 +64,52 @@ export default function TeacherTestDetailPage() {
       .finally(() => setLoading(false));
   }, [params.id]);
 
+  async function handleDelete() {
+    if (!test) return;
+    const confirmed = confirm(
+      `「${test.title}」を削除しますか?\n受験者数: ${sessions.length}名\nこのテストに紐づく問題・受験セッション・解答・離脱ログもすべて削除され、元に戻せません。`
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/teacher/tests/${params.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(data.error ?? "削除に失敗しました");
+        return;
+      }
+      router.push("/teacher/tests");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (loading) return <p className="text-slate-500">読み込み中...</p>;
   if (!test) return <p className="text-red-600">テストが見つかりません</p>;
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold text-slate-800 notranslate">{test.title}</h1>
-        <p className="text-sm text-slate-500 notranslate">パスコード: {test.passcode}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-800 notranslate">{test.title}</h1>
+          <p className="text-sm text-slate-500 notranslate">パスコード: {test.passcode}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Link
+            href={`/teacher/tests/${params.id}/edit`}
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            設定を編集
+          </Link>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            {deleting ? "削除中..." : "テストを削除"}
+          </button>
+        </div>
       </div>
 
       <section className="grid grid-cols-2 gap-4 rounded-lg bg-white p-6 shadow sm:grid-cols-4">
