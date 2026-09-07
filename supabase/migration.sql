@@ -76,8 +76,9 @@ create table test_sessions (
   total_score integer,
   auto_submitted boolean not null default false,
   deleted_at timestamptz,               -- 教員による論理削除(再受験を許可する。履歴・CSVエクスポートには残る)
-  leave_violation_count integer not null default 0, -- leave_grace_seconds以上の離脱が発生した回数(段階的アクションの基準・auto_pause解除後もリセットしない)
+  leave_violation_count integer not null default 0, -- leave_grace_seconds以上の離脱が発生した回数(全期間の累計。単一しきい値方式の基準・auto_pause解除後もリセットしない)
   leave_stage_reached integer not null default 0, -- 段階的アクションで既に発動済みの段階数(0=未発動。auto_pause解除後もリセットしない)
+  current_stage_started_at timestamptz not null default now(), -- 現在の段階が始まった時刻(段階0の間はセッション開始時刻と同じ)。段階的アクションの回数・時間しきい値は、この時刻以降のproctoring_logsのみを対象に都度集計する
   created_at timestamptz default now()
 );
 

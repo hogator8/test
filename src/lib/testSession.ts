@@ -11,6 +11,7 @@ export interface SessionWithTest {
   auto_submitted: boolean;
   leave_violation_count: number;
   leave_stage_reached: number;
+  current_stage_started_at: string;
   test: {
     id: string;
     title: string;
@@ -43,7 +44,7 @@ export async function loadSessionForStudent(
   const { data, error } = await supabase
     .from("test_sessions")
     .select(
-      "id, student_id, test_id, status, started_at, submitted_at, total_score, auto_submitted, leave_violation_count, leave_stage_reached, tests(id, title, time_limit_minutes, leave_detection_enabled, leave_grace_seconds, leave_count_threshold, leave_duration_threshold_seconds, leave_action, leave_staged_actions, leave_warning_message, pause_release_pin, start_screen_message, show_score_to_student)"
+      "id, student_id, test_id, status, started_at, submitted_at, total_score, auto_submitted, leave_violation_count, leave_stage_reached, current_stage_started_at, tests(id, title, time_limit_minutes, leave_detection_enabled, leave_grace_seconds, leave_count_threshold, leave_duration_threshold_seconds, leave_action, leave_staged_actions, leave_warning_message, pause_release_pin, start_screen_message, show_score_to_student)"
     )
     .eq("id", sessionId)
     .maybeSingle();
@@ -70,6 +71,7 @@ export async function loadSessionForStudent(
       auto_submitted: data.auto_submitted,
       leave_violation_count: data.leave_violation_count,
       leave_stage_reached: data.leave_stage_reached,
+      current_stage_started_at: data.current_stage_started_at,
       test: test as SessionWithTest["test"],
     },
   };
