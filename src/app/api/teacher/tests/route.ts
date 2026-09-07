@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { noStoreJson } from "@/lib/http";
 import { parseQuestionCsv } from "@/lib/questionCsv";
 import { validateLeaveSettings } from "@/lib/testValidation";
+import type { LeaveStage } from "@/lib/leaveStages";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
   const leaveDurationThresholdRaw = String(formData.get("leaveDurationThresholdSeconds") ?? "").trim();
   const leaveAction = String(formData.get("leaveAction") ?? "warning_only").trim();
   const leaveStagedMode = formData.get("leaveStagedMode") === "true";
-  let leaveStagedActions: string[] = [];
+  let leaveStagedActions: LeaveStage[] = [];
   try {
     leaveStagedActions = JSON.parse(String(formData.get("leaveStagedActions") ?? "[]"));
   } catch {

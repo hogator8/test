@@ -32,7 +32,7 @@ create table tests (
   pause_release_pin text,               -- auto_pause解除用の4桁PIN(教員が端末で直接入力する運用)
   start_screen_message text,            -- パスコード入力後の案内文言(nullならデフォルト文言)
   show_score_to_student boolean not null default true, -- falseなら提出後・受験履歴で得点/正誤を学生に見せない
-  leave_staged_actions jsonb,           -- 段階的な離脱アクション(例: ["warning_only","auto_pause","auto_submit"])。nullまたは空配列なら単一しきい値方式を使用
+  leave_staged_actions jsonb,           -- 段階的な離脱アクション。各要素は{action, count_threshold, duration_threshold_seconds}のオブジェクト(v7〜)。nullまたは空配列なら単一しきい値方式を使用
   created_at timestamptz default now()
 );
 
@@ -77,6 +77,7 @@ create table test_sessions (
   auto_submitted boolean not null default false,
   deleted_at timestamptz,               -- 教員による論理削除(再受験を許可する。履歴・CSVエクスポートには残る)
   leave_violation_count integer not null default 0, -- leave_grace_seconds以上の離脱が発生した回数(段階的アクションの基準・auto_pause解除後もリセットしない)
+  leave_stage_reached integer not null default 0, -- 段階的アクションで既に発動済みの段階数(0=未発動。auto_pause解除後もリセットしない)
   created_at timestamptz default now()
 );
 

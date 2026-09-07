@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StagedActionsEditor } from "@/components/StagedActionsEditor";
+import type { LeaveStage } from "@/lib/leaveStages";
 
 interface RowError {
   row: number;
@@ -23,7 +24,9 @@ export default function NewTestPage() {
   const [leaveDurationThreshold, setLeaveDurationThreshold] = useState("");
   const [leaveAction, setLeaveAction] = useState("warning_only");
   const [leaveStagedMode, setLeaveStagedMode] = useState(false);
-  const [stagedActions, setStagedActions] = useState<string[]>(["warning_only"]);
+  const [stagedActions, setStagedActions] = useState<LeaveStage[]>([
+    { action: "warning_only", count_threshold: 1, duration_threshold_seconds: null },
+  ]);
   const [leaveWarningMessage, setLeaveWarningMessage] = useState("");
   const [pauseReleasePin, setPauseReleasePin] = useState("");
   const [startScreenMessage, setStartScreenMessage] = useState("");
@@ -236,7 +239,9 @@ export default function NewTestPage() {
                   placeholder="画面から離れたことが検知されました。受験を継続するには画面内に留まってください。"
                 />
               </label>
-              {(leaveStagedMode ? stagedActions.includes("auto_pause") : leaveAction === "auto_pause") && (
+              {(leaveStagedMode
+                ? stagedActions.some((s) => s.action === "auto_pause")
+                : leaveAction === "auto_pause") && (
                 <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                   一時停止解除用PIN(4桁の数字・教員が端末で直接入力して解除します)
                   <input

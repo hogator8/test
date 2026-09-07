@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { noStoreJson } from "@/lib/http";
 import { validateLeaveSettings } from "@/lib/testValidation";
+import type { LeaveStage } from "@/lib/leaveStages";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -108,7 +109,7 @@ interface UpdateTestBody {
   leaveDurationThresholdSeconds?: string | number | null;
   leaveAction?: string;
   leaveStagedMode?: boolean;
-  leaveStagedActions?: string[];
+  leaveStagedActions?: LeaveStage[];
   leaveWarningMessage?: string | null;
   pauseReleasePin?: string | null;
   startScreenMessage?: string | null;
