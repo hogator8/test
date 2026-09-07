@@ -80,6 +80,17 @@ async function tryRequestFullscreen(): Promise<void> {
   }
 }
 
+/**
+ * How long to wait, after either signal fires, before actually sending a
+ * proctoring report. Switching away from a fullscreen tab commonly fires
+ * both `visibilitychange` (hidden) and `fullscreenchange` (exited) for the
+ * one physical action, each with its own begin/end pair - without this
+ * coalescing window, that single leave would be reported (and counted)
+ * twice. 500ms is far longer than the gap between the two browser events
+ * for one action, but short enough not to noticeably delay a warning.
+ */
+const LEAVE_EVENT_COALESCE_MS = 500;
+
 export default function StudentTestPage() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId;
@@ -107,6 +118,12 @@ export default function StudentTestPage() {
   const answersRef = useRef<Record<string, AnswerState>>({});
   answersRef.current = answers;
   const freeTextTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const pendingLeaveReportRef = useRef<{
+    eventTypes: Set<"background" | "fullscreen_exit">;
+    leftAtMs: number;
+    returnedAtMs: number;
+  } | null>(null);
+  const leaveReportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetch(`/api/student/session/${sessionId}`)
@@ -126,7 +143,7 @@ export default function StudentTestPage() {
       .catch((e) => setLoadError(e.message));
   }, [sessionId]);
 
-  const reportLeaveEvent = useCallback(
+  const sendLeaveReport = useCallback(
     async (eventType: "background" | "fullscreen_exit", leftAtMs: number, returnedAtMs: number) => {
       if (statusRef.current !== "in_progress") return;
       const durationSeconds = Math.max(0, (returnedAtMs - leftAtMs) / 1000);
@@ -156,6 +173,41 @@ export default function StudentTestPage() {
       }
     },
     [sessionId]
+  );
+
+  const flushLeaveReport = useCallback(() => {
+    const pending = pendingLeaveReportRef.current;
+    pendingLeaveReportRef.current = null;
+    leaveReportTimerRef.current = null;
+    if (!pending) return;
+    // The specific eventType only matters for the proctoring_logs label -
+    // prefer "background" since it's the universally-supported signal.
+    const eventType = pending.eventTypes.has("background") ? "background" : "fullscreen_exit";
+    sendLeaveReport(eventType, pending.leftAtMs, pending.returnedAtMs);
+  }, [sendLeaveReport]);
+
+  /**
+   * Queues a leave report instead of sending it immediately, merging it with
+   * any other report already queued within LEAVE_EVENT_COALESCE_MS. This is
+   * what keeps a single physical leave action - which can trigger both the
+   * background and fullscreen-exit detectors for the same moment - from
+   * ever being counted as more than one violation server-side.
+   */
+  const reportLeaveEvent = useCallback(
+    (eventType: "background" | "fullscreen_exit", leftAtMs: number, returnedAtMs: number) => {
+      if (statusRef.current !== "in_progress") return;
+      const pending = pendingLeaveReportRef.current;
+      if (pending) {
+        pending.eventTypes.add(eventType);
+        pending.leftAtMs = Math.min(pending.leftAtMs, leftAtMs);
+        pending.returnedAtMs = Math.max(pending.returnedAtMs, returnedAtMs);
+      } else {
+        pendingLeaveReportRef.current = { eventTypes: new Set([eventType]), leftAtMs, returnedAtMs };
+      }
+      if (leaveReportTimerRef.current) clearTimeout(leaveReportTimerRef.current);
+      leaveReportTimerRef.current = setTimeout(flushLeaveReport, LEAVE_EVENT_COALESCE_MS);
+    },
+    [flushLeaveReport]
   );
 
   // Background / tab-switch detection (works on iOS Safari + Android Chrome).

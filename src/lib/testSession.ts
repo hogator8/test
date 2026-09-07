@@ -10,6 +10,7 @@ export interface SessionWithTest {
   total_score: number | null;
   auto_submitted: boolean;
   leave_violation_count: number;
+  leave_stage_reached: number;
   test: {
     id: string;
     title: string;
@@ -19,7 +20,10 @@ export interface SessionWithTest {
     leave_count_threshold: number | null;
     leave_duration_threshold_seconds: number | null;
     leave_action: "warning_only" | "auto_pause" | "auto_submit";
-    leave_staged_actions: ("warning_only" | "auto_pause" | "auto_submit")[] | null;
+    // Raw jsonb column - may still be the legacy string-array format for
+    // rows that predate v7. Always pass this through normalizeStagedActions()
+    // before use; never assume the shape here.
+    leave_staged_actions: unknown;
     leave_warning_message: string | null;
     pause_release_pin: string | null;
     start_screen_message: string | null;
@@ -39,7 +43,7 @@ export async function loadSessionForStudent(
   const { data, error } = await supabase
     .from("test_sessions")
     .select(
-      "id, student_id, test_id, status, started_at, submitted_at, total_score, auto_submitted, leave_violation_count, tests(id, title, time_limit_minutes, leave_detection_enabled, leave_grace_seconds, leave_count_threshold, leave_duration_threshold_seconds, leave_action, leave_staged_actions, leave_warning_message, pause_release_pin, start_screen_message, show_score_to_student)"
+      "id, student_id, test_id, status, started_at, submitted_at, total_score, auto_submitted, leave_violation_count, leave_stage_reached, tests(id, title, time_limit_minutes, leave_detection_enabled, leave_grace_seconds, leave_count_threshold, leave_duration_threshold_seconds, leave_action, leave_staged_actions, leave_warning_message, pause_release_pin, start_screen_message, show_score_to_student)"
     )
     .eq("id", sessionId)
     .maybeSingle();
@@ -65,6 +69,7 @@ export async function loadSessionForStudent(
       total_score: data.total_score,
       auto_submitted: data.auto_submitted,
       leave_violation_count: data.leave_violation_count,
+      leave_stage_reached: data.leave_stage_reached,
       test: test as SessionWithTest["test"],
     },
   };
