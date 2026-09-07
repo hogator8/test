@@ -163,6 +163,14 @@ export default function StudentTestPage() {
           setWarningOpen(true);
         } else if (json.action === "paused") {
           setStatus("paused");
+          // Discard any leave marker still open at the moment we pause (e.g.
+          // a fullscreen-exit that hasn't been paired with a re-entry yet).
+          // Fullscreen doesn't automatically restore itself, so without this
+          // a marker recorded before the pause would otherwise sit dangling
+          // until the PIN-resume flow below re-requests fullscreen - at
+          // which point it would resolve into a bogus report spanning the
+          // entire pause, even though nothing happened during that time.
+          leftAtRef.current = { background: null, fullscreen: null };
         } else if (json.action === "auto_submit") {
           setStatus("submitted");
           setFinalResult({ totalScore: json.totalScore, autoSubmitted: true });
@@ -332,6 +340,12 @@ export default function StudentTestPage() {
     if (res.ok) {
       setStatus("in_progress");
       setEntered(true);
+      // Defense in depth alongside the reset in sendLeaveReport's "paused"
+      // branch above: make sure no dangling leave marker survives into the
+      // resumed session before we re-request fullscreen below, since that
+      // request's resulting fullscreenchange event is exactly what would
+      // otherwise resolve a stale marker into a bogus report.
+      leftAtRef.current = { background: null, fullscreen: null };
       await tryRequestFullscreen();
       return null;
     }
