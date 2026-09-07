@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { verifyStudentToken, STUDENT_COOKIE } from "@/lib/auth";
 import { loadSessionForStudent, submitIfExpired } from "@/lib/testSession";
 import { noStoreJson } from "@/lib/http";
+import { buildChoices } from "@/lib/questions";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -21,11 +22,17 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
   const [questionsResult, answersResult] = await Promise.all([
     supabase
       .from("questions")
-      .select("id, section_number, question_number, question_text, choice_1, choice_2, choice_3, choice_4, choice_5")
+      .select(
+        "id, section_number, question_number, question_text, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10"
+      )
       .eq("test_id", session.test_id)
+      .is("deleted_at", null)
       .order("section_number", { ascending: true })
       .order("question_number", { ascending: true }),
-    supabase.from("answers").select("question_id, selected_choice").eq("session_id", session.id),
+    supabase
+      .from("answers")
+      .select("question_id, selected_choice, free_text_response")
+      .eq("session_id", session.id),
   ]);
 
   const { data: questions, error: questionsError } = questionsResult;
@@ -38,9 +45,12 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     return NextResponse.json({ error: answersError.message }, { status: 500 });
   }
 
-  const answerMap: Record<string, number> = {};
+  const answerMap: Record<string, { selectedChoice: number | null; freeTextResponse: string | null }> = {};
   for (const a of answers ?? []) {
-    if (a.selected_choice !== null) answerMap[a.question_id] = a.selected_choice;
+    answerMap[a.question_id] = {
+      selectedChoice: a.selected_choice,
+      freeTextResponse: a.free_text_response,
+    };
   }
 
   const sectionsMap = new Map<number, typeof questions>();
@@ -57,9 +67,8 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
         id: q.id,
         questionNumber: q.question_number,
         questionText: q.question_text,
-        choices: [q.choice_1, q.choice_2, q.choice_3, q.choice_4, q.choice_5]
-          .map((text, i) => ({ index: i + 1, text }))
-          .filter((c) => c.text !== null && c.text !== ""),
+        questionType: q.question_type,
+        choices: buildChoices(q),
       })),
     }));
 

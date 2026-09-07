@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { verifyStudentToken, STUDENT_COOKIE } from "@/lib/auth";
 import { noStoreJson } from "@/lib/http";
+import { buildChoices } from "@/lib/questions";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -49,19 +50,31 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
   const [{ data: questions, error: questionsError }, { data: answers, error: answersError }] = await Promise.all([
     supabase
       .from("questions")
-      .select("id, section_number, question_number, question_text, choice_1, choice_2, choice_3, choice_4, choice_5, correct_answer")
+      .select(
+        "id, section_number, question_number, question_text, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10, correct_answer, free_text_answer_1, free_text_answer_2, free_text_answer_3, free_text_answer_4, free_text_answer_5"
+      )
       .eq("test_id", session.test_id)
       .order("section_number", { ascending: true })
       .order("question_number", { ascending: true }),
-    supabase.from("answers").select("question_id, selected_choice, is_correct").eq("session_id", session.id),
+    supabase
+      .from("answers")
+      .select("question_id, selected_choice, free_text_response, is_correct")
+      .eq("session_id", session.id),
   ]);
 
   if (questionsError) return NextResponse.json({ error: questionsError.message }, { status: 500 });
   if (answersError) return NextResponse.json({ error: answersError.message }, { status: 500 });
 
-  const answersByQuestion: Record<string, { selected: number | null; correct: boolean | null }> = {};
+  const answersByQuestion: Record<
+    string,
+    { selected: number | null; freeText: string | null; correct: boolean | null }
+  > = {};
   for (const a of answers ?? []) {
-    answersByQuestion[a.question_id] = { selected: a.selected_choice, correct: a.is_correct };
+    answersByQuestion[a.question_id] = {
+      selected: a.selected_choice,
+      freeText: a.free_text_response,
+      correct: a.is_correct,
+    };
   }
 
   const sectionsMap = new Map<number, typeof questions>();
@@ -76,16 +89,16 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
       sectionNumber,
       questions: qs.map((q) => {
         const a = answersByQuestion[q.id];
-        const choices = [q.choice_1, q.choice_2, q.choice_3, q.choice_4, q.choice_5]
-          .map((text, i) => ({ index: i + 1, text }))
-          .filter((c) => c.text !== null && c.text !== "");
         return {
           id: q.id,
           questionNumber: q.question_number,
           questionText: q.question_text,
-          choices,
+          questionType: q.question_type,
+          choices: buildChoices(q),
           selectedChoice: a?.selected ?? null,
           correctChoice: q.correct_answer,
+          freeTextResponse: a?.freeText ?? null,
+          freeTextCorrectAnswer: q.free_text_answer_1,
           isCorrect: a?.correct ?? false,
         };
       }),

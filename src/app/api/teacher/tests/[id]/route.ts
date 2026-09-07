@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { noStoreJson } from "@/lib/http";
+import { validateLeaveSettings } from "@/lib/testValidation";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
 export const dynamic = "force-dynamic";
-
-const LEAVE_ACTIONS = new Set(["warning_only", "auto_pause", "auto_submit"]);
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const supabase = getSupabaseAdmin();
@@ -18,7 +17,11 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // out of this list - see supabase/migration_v4a.sql.)
   const [testResult, questionCountResult, sessionsResult, totalStudentsResult] = await Promise.all([
     supabase.from("tests").select("*").eq("id", testId).single(),
-    supabase.from("questions").select("id", { count: "exact", head: true }).eq("test_id", testId),
+    supabase
+      .from("questions")
+      .select("id", { count: "exact", head: true })
+      .eq("test_id", testId)
+      .is("deleted_at", null),
     supabase
       .from("test_sessions")
       .select("id, student_id, status, started_at, submitted_at, total_score, auto_submitted")
@@ -104,6 +107,8 @@ interface UpdateTestBody {
   leaveCountThreshold?: string | number | null;
   leaveDurationThresholdSeconds?: string | number | null;
   leaveAction?: string;
+  leaveStagedMode?: boolean;
+  leaveStagedActions?: string[];
   leaveWarningMessage?: string | null;
   pauseReleasePin?: string | null;
   startScreenMessage?: string | null;
@@ -128,6 +133,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const passcode = (body.passcode ?? "").trim();
   const leaveAction = (body.leaveAction ?? "warning_only").trim();
   const leaveDetectionEnabled = Boolean(body.leaveDetectionEnabled);
+  const leaveStagedMode = Boolean(body.leaveStagedMode);
+  const leaveStagedActions = Array.isArray(body.leaveStagedActions) ? body.leaveStagedActions : [];
   const leaveWarningMessage = (body.leaveWarningMessage ?? "").trim();
   const pauseReleasePin = (body.pauseReleasePin ?? "").trim();
   const startScreenMessage = (body.startScreenMessage ?? "").trim();
@@ -138,9 +145,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
   if (!passcode) {
     return NextResponse.json({ error: "パスコードを入力してください" }, { status: 400 });
-  }
-  if (!LEAVE_ACTIONS.has(leaveAction)) {
-    return NextResponse.json({ error: "離脱時の挙動が不正です" }, { status: 400 });
   }
 
   let timeLimitMinutes: number | null = null;
@@ -179,11 +183,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     leaveDurationThreshold = n;
   }
 
-  if (leaveDetectionEnabled && leaveAction === "auto_pause" && !/^\d{4}$/.test(pauseReleasePin)) {
-    return NextResponse.json(
-      { error: "自動一時停止を選択する場合、解除用の4桁PIN(数字)を設定してください" },
-      { status: 400 }
-    );
+  const leaveError = validateLeaveSettings({
+    leaveDetectionEnabled,
+    leaveAction,
+    leaveStagedMode,
+    leaveStagedActions,
+    pauseReleasePin,
+  });
+  if (leaveError) {
+    return NextResponse.json({ error: leaveError }, { status: 400 });
   }
 
   const { data: updated, error: updateError } = await supabase
@@ -197,6 +205,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       leave_count_threshold: leaveCountThreshold,
       leave_duration_threshold_seconds: leaveDurationThreshold,
       leave_action: leaveAction,
+      leave_staged_actions: leaveDetectionEnabled && leaveStagedMode ? leaveStagedActions : null,
       leave_warning_message: leaveWarningMessage || null,
       pause_release_pin: pauseReleasePin || null,
       start_screen_message: startScreenMessage || null,

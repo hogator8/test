@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import Papa from "papaparse";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { noStoreJson } from "@/lib/http";
+import { parseQuestionCsv } from "@/lib/questionCsv";
+import { validateLeaveSettings } from "@/lib/testValidation";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
 export const dynamic = "force-dynamic";
-
-interface RowError {
-  row: number;
-  message: string;
-}
-
-function stripBom(text: string): string {
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
-}
-
-const LEAVE_ACTIONS = new Set(["warning_only", "auto_pause", "auto_submit"]);
 
 export async function GET() {
   const supabase = getSupabaseAdmin();
@@ -35,7 +25,7 @@ export async function GET() {
 
   if (testIds.length > 0) {
     const [{ data: questions }, { data: sessions }] = await Promise.all([
-      supabase.from("questions").select("test_id").in("test_id", testIds),
+      supabase.from("questions").select("test_id").in("test_id", testIds).is("deleted_at", null),
       supabase.from("test_sessions").select("test_id").in("test_id", testIds).is("deleted_at", null),
     ]);
     for (const q of questions ?? []) {
@@ -63,6 +53,13 @@ export async function POST(req: NextRequest) {
   const leaveCountThresholdRaw = String(formData.get("leaveCountThreshold") ?? "").trim();
   const leaveDurationThresholdRaw = String(formData.get("leaveDurationThresholdSeconds") ?? "").trim();
   const leaveAction = String(formData.get("leaveAction") ?? "warning_only").trim();
+  const leaveStagedMode = formData.get("leaveStagedMode") === "true";
+  let leaveStagedActions: string[] = [];
+  try {
+    leaveStagedActions = JSON.parse(String(formData.get("leaveStagedActions") ?? "[]"));
+  } catch {
+    return NextResponse.json({ error: "段階設定の形式が不正です" }, { status: 400 });
+  }
   const leaveWarningMessage = String(formData.get("leaveWarningMessage") ?? "").trim();
   const pauseReleasePin = String(formData.get("pauseReleasePin") ?? "").trim();
   const startScreenMessage = String(formData.get("startScreenMessage") ?? "").trim();
@@ -74,9 +71,6 @@ export async function POST(req: NextRequest) {
   }
   if (!passcode) {
     return NextResponse.json({ error: "パスコードを入力してください" }, { status: 400 });
-  }
-  if (!LEAVE_ACTIONS.has(leaveAction)) {
-    return NextResponse.json({ error: "離脱時の挙動が不正です" }, { status: 400 });
   }
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "問題CSVファイルを選択してください" }, { status: 400 });
@@ -114,118 +108,22 @@ export async function POST(req: NextRequest) {
     leaveDurationThreshold = n;
   }
 
-  if (leaveDetectionEnabled && leaveAction === "auto_pause" && !/^\d{4}$/.test(pauseReleasePin)) {
-    return NextResponse.json(
-      { error: "自動一時停止を選択する場合、解除用の4桁PIN(数字)を設定してください" },
-      { status: 400 }
-    );
-  }
-
-  const rawText = stripBom(await file.text());
-  const parsed = Papa.parse<string[]>(rawText, { skipEmptyLines: true });
-  if (parsed.errors.length > 0) {
-    return NextResponse.json(
-      { error: "問題CSVの解析に失敗しました: " + parsed.errors[0].message },
-      { status: 400 }
-    );
-  }
-
-  const allRows = parsed.data;
-  if (allRows.length === 0) {
-    return NextResponse.json({ error: "問題CSVにデータがありません" }, { status: 400 });
-  }
-
-  // The first row is always a header row (セクション番号,問題番号,...) and is skipped.
-  const rows = allRows.slice(1);
-  if (rows.length === 0) {
-    return NextResponse.json({ error: "問題CSVにヘッダー行以外のデータがありません" }, { status: 400 });
-  }
-
-  const errors: RowError[] = [];
-  const seenPairs = new Map<string, number>();
-  type ParsedQuestion = {
-    row: number;
-    section_number: number;
-    question_number: number;
-    question_text: string;
-    choice_1: string;
-    choice_2: string;
-    choice_3: string | null;
-    choice_4: string | null;
-    choice_5: string | null;
-    correct_answer: number;
-  };
-  const parsedQuestions: ParsedQuestion[] = [];
-
-  rows.forEach((cols, idx) => {
-    const rowNum = idx + 2; // +1 for 1-indexing, +1 more for the skipped header row
-    const sectionRaw = (cols[0] ?? "").trim();
-    const questionRaw = (cols[1] ?? "").trim();
-    const questionText = (cols[2] ?? "").trim();
-    const choice1 = (cols[3] ?? "").trim();
-    const choice2 = (cols[4] ?? "").trim();
-    const choice3 = (cols[5] ?? "").trim();
-    const choice4 = (cols[6] ?? "").trim();
-    const choice5 = (cols[7] ?? "").trim();
-    const correctRaw = (cols[8] ?? "").trim();
-
-    const sectionNumber = Number(sectionRaw);
-    const questionNumber = Number(questionRaw);
-    const correctAnswer = Number(correctRaw);
-
-    if (!Number.isInteger(sectionNumber) || sectionNumber <= 0) {
-      errors.push({ row: rowNum, message: "セクション番号は正の整数で入力してください" });
-      return;
-    }
-    if (!Number.isInteger(questionNumber) || questionNumber <= 0) {
-      errors.push({ row: rowNum, message: "問題番号は正の整数で入力してください" });
-      return;
-    }
-    if (!questionText) {
-      errors.push({ row: rowNum, message: "問題文が空です" });
-      return;
-    }
-    if (!choice1 || !choice2) {
-      errors.push({ row: rowNum, message: "選択肢1・選択肢2は必須です" });
-      return;
-    }
-
-    const choiceCount = [choice1, choice2, choice3, choice4, choice5].filter((c) => c !== "").length;
-
-    if (!Number.isInteger(correctAnswer) || correctAnswer < 1 || correctAnswer > choiceCount) {
-      errors.push({
-        row: rowNum,
-        message: `正答は選択肢の範囲内(1〜${choiceCount})で入力してください`,
-      });
-      return;
-    }
-
-    const pairKey = `${sectionNumber}-${questionNumber}`;
-    if (seenPairs.has(pairKey)) {
-      errors.push({
-        row: rowNum,
-        message: `セクション${sectionNumber}・問題${questionNumber}はCSV内の${seenPairs.get(
-          pairKey
-        )}行目と重複しています`,
-      });
-      return;
-    }
-    seenPairs.set(pairKey, rowNum);
-
-    parsedQuestions.push({
-      row: rowNum,
-      section_number: sectionNumber,
-      question_number: questionNumber,
-      question_text: questionText,
-      choice_1: choice1,
-      choice_2: choice2,
-      choice_3: choice3 || null,
-      choice_4: choice4 || null,
-      choice_5: choice5 || null,
-      correct_answer: correctAnswer,
-    });
+  const leaveError = validateLeaveSettings({
+    leaveDetectionEnabled,
+    leaveAction,
+    leaveStagedMode,
+    leaveStagedActions,
+    pauseReleasePin,
   });
+  if (leaveError) {
+    return NextResponse.json({ error: leaveError }, { status: 400 });
+  }
 
+  const rawText = await file.text();
+  const { errors, questions: parsedQuestions, parseError } = parseQuestionCsv(rawText);
+  if (parseError) {
+    return NextResponse.json({ error: "問題CSVの解析に失敗しました: " + parseError }, { status: 400 });
+  }
   if (errors.length > 0) {
     return NextResponse.json({ error: "問題CSVの内容にエラーがあります", errors }, { status: 400 });
   }
@@ -242,6 +140,7 @@ export async function POST(req: NextRequest) {
       leave_count_threshold: leaveCountThreshold,
       leave_duration_threshold_seconds: leaveDurationThreshold,
       leave_action: leaveAction,
+      leave_staged_actions: leaveDetectionEnabled && leaveStagedMode ? leaveStagedActions : null,
       leave_warning_message: leaveWarningMessage || null,
       pause_release_pin: pauseReleasePin || null,
       start_screen_message: startScreenMessage || null,

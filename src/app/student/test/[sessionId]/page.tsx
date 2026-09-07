@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { QuestionText } from "@/components/QuestionText";
 
 type SessionStatus = "in_progress" | "paused" | "submitted";
 
@@ -15,7 +16,13 @@ interface Question {
   id: string;
   questionNumber: number;
   questionText: string;
+  questionType: "multiple_choice" | "free_text";
   choices: Choice[];
+}
+
+interface AnswerState {
+  selectedChoice: number | null;
+  freeTextResponse: string | null;
 }
 
 interface Section {
@@ -53,7 +60,7 @@ interface SessionData {
   };
   test: TestInfo;
   sections: Section[];
-  answers: Record<string, number>;
+  answers: Record<string, AnswerState>;
   totalQuestions: number;
   serverNow: string;
 }
@@ -80,7 +87,7 @@ export default function StudentTestPage() {
   const [data, setData] = useState<SessionData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<SessionStatus | null>(null);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [answers, setAnswers] = useState<Record<string, AnswerState>>({});
   const [entered, setEntered] = useState(false);
   const [warningOpen, setWarningOpen] = useState(false);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
@@ -97,6 +104,9 @@ export default function StudentTestPage() {
   const submitGuardRef = useRef(false);
   const statusRef = useRef<SessionStatus | null>(null);
   statusRef.current = status;
+  const answersRef = useRef<Record<string, AnswerState>>({});
+  answersRef.current = answers;
+  const freeTextTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     fetch(`/api/student/session/${sessionId}`)
@@ -188,12 +198,42 @@ export default function StudentTestPage() {
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, [entered, data?.test.leaveDetectionEnabled, reportLeaveEvent]);
 
+  const saveFreeText = useCallback(
+    async (questionId: string, value: string) => {
+      const res = await fetch(`/api/student/session/${sessionId}/answer`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId, freeTextResponse: value }),
+      });
+      if (!res.ok) {
+        const json = await res.json();
+        if (json.submitted) {
+          setStatus("submitted");
+        }
+      }
+    },
+    [sessionId]
+  );
+
   const doSubmit = useCallback(
     async (auto: boolean) => {
       if (submitGuardRef.current) return;
       submitGuardRef.current = true;
       setSubmitting(true);
       try {
+        // Flush any free-text edits still waiting on their debounce timer so
+        // the last few keystrokes before SEND aren't lost.
+        const pending = Object.entries(freeTextTimersRef.current);
+        if (pending.length > 0) {
+          for (const [, timer] of pending) clearTimeout(timer);
+          freeTextTimersRef.current = {};
+          await Promise.all(
+            pending.map(([questionId]) => {
+              const value = answersRef.current[questionId]?.freeTextResponse;
+              return typeof value === "string" ? saveFreeText(questionId, value) : Promise.resolve();
+            })
+          );
+        }
         const res = await fetch(`/api/student/session/${sessionId}/submit`, { method: "POST" });
         const json = await res.json();
         if (res.ok) {
@@ -204,7 +244,7 @@ export default function StudentTestPage() {
         setSubmitting(false);
       }
     },
-    [sessionId]
+    [sessionId, saveFreeText]
   );
 
   // Countdown timer (display only - the server independently enforces the deadline).
@@ -251,8 +291,8 @@ export default function StudentTestPage() {
     return json.error ?? "PINが正しくありません";
   }
 
-  async function handleSelect(questionId: string, choiceIndex: number) {
-    setAnswers((prev) => ({ ...prev, [questionId]: choiceIndex }));
+  async function handleSelectChoice(questionId: string, choiceIndex: number) {
+    setAnswers((prev) => ({ ...prev, [questionId]: { selectedChoice: choiceIndex, freeTextResponse: null } }));
     const res = await fetch(`/api/student/session/${sessionId}/answer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -264,6 +304,14 @@ export default function StudentTestPage() {
         setStatus("submitted");
       }
     }
+  }
+
+  function handleFreeTextChange(questionId: string, value: string) {
+    setAnswers((prev) => ({ ...prev, [questionId]: { selectedChoice: null, freeTextResponse: value } }));
+    clearTimeout(freeTextTimersRef.current[questionId]);
+    freeTextTimersRef.current[questionId] = setTimeout(() => {
+      saveFreeText(questionId, value);
+    }, 600);
   }
 
   async function handleConfirmSubmit() {
@@ -355,25 +403,35 @@ export default function StudentTestPage() {
           <div className="flex flex-col gap-4">
             {section.questions.map((q) => (
               <div key={q.id} className="rounded-lg bg-white p-4 shadow">
-                <p className="notranslate mb-3 font-medium text-slate-800">
-                  問{q.questionNumber}. {q.questionText}
+                <p className="mb-3 font-medium text-slate-800">
+                  問{q.questionNumber}. <QuestionText text={q.questionText} />
                 </p>
-                <div className="flex flex-col gap-2">
-                  {q.choices.map((c) => (
-                    <label
-                      key={c.index}
-                      className="notranslate flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50"
-                    >
-                      <input
-                        type="radio"
-                        name={q.id}
-                        checked={answers[q.id] === c.index}
-                        onChange={() => handleSelect(q.id, c.index)}
-                      />
-                      {c.text}
-                    </label>
-                  ))}
-                </div>
+                {q.questionType === "free_text" ? (
+                  <input
+                    type="text"
+                    className="notranslate w-full rounded-md border border-slate-300 px-3 py-2"
+                    value={answers[q.id]?.freeTextResponse ?? ""}
+                    onChange={(e) => handleFreeTextChange(q.id, e.target.value)}
+                    placeholder="回答を入力"
+                  />
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {q.choices.map((c) => (
+                      <label
+                        key={c.index}
+                        className="notranslate flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-slate-700 hover:bg-slate-50"
+                      >
+                        <input
+                          type="radio"
+                          name={q.id}
+                          checked={answers[q.id]?.selectedChoice === c.index}
+                          onChange={() => handleSelectChoice(q.id, c.index)}
+                        />
+                        <QuestionText text={c.text} />
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>

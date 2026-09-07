@@ -11,6 +11,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ja" translate="no">
       <head>
         <meta name="google" content="notranslate" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@400;700&display=swap"
+          rel="stylesheet"
+        />
       </head>
       <body>{children}</body>
     </html>
