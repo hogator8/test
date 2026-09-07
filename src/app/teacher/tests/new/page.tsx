@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { StagedActionsEditor } from "@/components/StagedActionsEditor";
 
 interface RowError {
   row: number;
@@ -21,6 +22,8 @@ export default function NewTestPage() {
   const [leaveCountThreshold, setLeaveCountThreshold] = useState("");
   const [leaveDurationThreshold, setLeaveDurationThreshold] = useState("");
   const [leaveAction, setLeaveAction] = useState("warning_only");
+  const [leaveStagedMode, setLeaveStagedMode] = useState(false);
+  const [stagedActions, setStagedActions] = useState<string[]>(["warning_only"]);
   const [leaveWarningMessage, setLeaveWarningMessage] = useState("");
   const [pauseReleasePin, setPauseReleasePin] = useState("");
   const [startScreenMessage, setStartScreenMessage] = useState("");
@@ -53,6 +56,8 @@ export default function NewTestPage() {
       formData.append("leaveCountThreshold", leaveCountThreshold);
       formData.append("leaveDurationThresholdSeconds", leaveDurationThreshold);
       formData.append("leaveAction", leaveAction);
+      formData.append("leaveStagedMode", String(leaveStagedMode));
+      formData.append("leaveStagedActions", JSON.stringify(stagedActions));
       formData.append("leaveWarningMessage", leaveWarningMessage);
       formData.append("pauseReleasePin", pauseReleasePin);
       formData.append("startScreenMessage", startScreenMessage);
@@ -171,40 +176,56 @@ export default function NewTestPage() {
                   required
                 />
               </label>
-              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                累計離脱回数のしきい値(空欄可)
+              <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
                 <input
-                  type="number"
-                  min={0}
-                  className="w-32 rounded-md border border-slate-300 px-3 py-2"
-                  value={leaveCountThreshold}
-                  onChange={(e) => setLeaveCountThreshold(e.target.value)}
-                  placeholder="未設定"
+                  type="checkbox"
+                  checked={leaveStagedMode}
+                  onChange={(e) => setLeaveStagedMode(e.target.checked)}
                 />
+                段階的に設定する(離脱の発生回数ごとに挙動を変える)
               </label>
-              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                累計離脱時間のしきい値(秒・空欄可)
-                <input
-                  type="number"
-                  min={0}
-                  className="w-32 rounded-md border border-slate-300 px-3 py-2"
-                  value={leaveDurationThreshold}
-                  onChange={(e) => setLeaveDurationThreshold(e.target.value)}
-                  placeholder="未設定"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-                しきい値を超えた場合の挙動
-                <select
-                  className="w-56 rounded-md border border-slate-300 px-3 py-2"
-                  value={leaveAction}
-                  onChange={(e) => setLeaveAction(e.target.value)}
-                >
-                  <option value="warning_only">警告のみ</option>
-                  <option value="auto_pause">自動一時停止</option>
-                  <option value="auto_submit">自動提出</option>
-                </select>
-              </label>
+
+              {leaveStagedMode ? (
+                <StagedActionsEditor stagedActions={stagedActions} onChange={setStagedActions} />
+              ) : (
+                <>
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                    累計離脱回数のしきい値(空欄可)
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-32 rounded-md border border-slate-300 px-3 py-2"
+                      value={leaveCountThreshold}
+                      onChange={(e) => setLeaveCountThreshold(e.target.value)}
+                      placeholder="未設定"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                    累計離脱時間のしきい値(秒・空欄可)
+                    <input
+                      type="number"
+                      min={0}
+                      className="w-32 rounded-md border border-slate-300 px-3 py-2"
+                      value={leaveDurationThreshold}
+                      onChange={(e) => setLeaveDurationThreshold(e.target.value)}
+                      placeholder="未設定"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+                    しきい値を超えた場合の挙動
+                    <select
+                      className="w-56 rounded-md border border-slate-300 px-3 py-2"
+                      value={leaveAction}
+                      onChange={(e) => setLeaveAction(e.target.value)}
+                    >
+                      <option value="warning_only">警告のみ</option>
+                      <option value="auto_pause">自動一時停止</option>
+                      <option value="auto_submit">自動提出</option>
+                    </select>
+                  </label>
+                </>
+              )}
+
               <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                 離脱警告メッセージ(任意・未入力の場合はデフォルト文言を表示)
                 <textarea
@@ -215,7 +236,7 @@ export default function NewTestPage() {
                   placeholder="画面から離れたことが検知されました。受験を継続するには画面内に留まってください。"
                 />
               </label>
-              {leaveAction === "auto_pause" && (
+              {(leaveStagedMode ? stagedActions.includes("auto_pause") : leaveAction === "auto_pause") && (
                 <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
                   一時停止解除用PIN(4桁の数字・教員が端末で直接入力して解除します)
                   <input
@@ -236,10 +257,16 @@ export default function NewTestPage() {
         </section>
 
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
-          <h2 className="font-bold text-slate-800">問題CSVアップロード</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-slate-800">問題CSVアップロード</h2>
+            <a href="/api/teacher/tests/questions-template" className="text-sm text-blue-600 hover:underline">
+              テンプレートをダウンロード
+            </a>
+          </div>
           <p className="text-sm text-slate-600">
-            フォーマット: 1行目はヘッダー行「セクション番号,問題番号,問題文,選択肢1,選択肢2,選択肢3,選択肢4,選択肢5,正答」、
-            2行目以降にデータを入力してください(選択肢3〜5は空欄可・正答は選択肢の列番号)
+            フォーマット: 1行目はヘッダー行「セクション番号,問題番号,問題文,選択肢1〜10,正答,記述正答1〜5」、
+            2行目以降にデータを入力してください。選択肢は2〜10個(未使用列は空欄)、正答は選択肢の列番号です。
+            選択肢をすべて空欄にして記述正答1のみ入力すると記述式問題になります。
           </p>
           <input
             ref={fileInputRef}

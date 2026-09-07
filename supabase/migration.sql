@@ -32,6 +32,7 @@ create table tests (
   pause_release_pin text,               -- auto_pause解除用の4桁PIN(教員が端末で直接入力する運用)
   start_screen_message text,            -- パスコード入力後の案内文言(nullならデフォルト文言)
   show_score_to_student boolean not null default true, -- falseなら提出後・受験履歴で得点/正誤を学生に見せない
+  leave_staged_actions jsonb,           -- 段階的な離脱アクション(例: ["warning_only","auto_pause","auto_submit"])。nullまたは空配列なら単一しきい値方式を使用
   created_at timestamptz default now()
 );
 
@@ -42,12 +43,24 @@ create table questions (
   section_number integer not null,
   question_number integer not null,
   question_text text not null,
-  choice_1 text not null,
-  choice_2 text not null,
+  question_type text not null default 'multiple_choice', -- 'multiple_choice' | 'free_text'
+  choice_1 text,
+  choice_2 text,
   choice_3 text,
   choice_4 text,
   choice_5 text,
-  correct_answer integer not null check (correct_answer between 1 and 5),
+  choice_6 text,
+  choice_7 text,
+  choice_8 text,
+  choice_9 text,
+  choice_10 text,
+  correct_answer integer check (correct_answer between 1 and 10),
+  free_text_answer_1 text,
+  free_text_answer_2 text,
+  free_text_answer_3 text,
+  free_text_answer_4 text,
+  free_text_answer_5 text,
+  deleted_at timestamptz,                -- 論理削除(CSV差し替えで消えた問題。既存answersの参照を壊さない)
   created_at timestamptz default now(),
   unique (test_id, section_number, question_number)
 );
@@ -63,6 +76,7 @@ create table test_sessions (
   total_score integer,
   auto_submitted boolean not null default false,
   deleted_at timestamptz,               -- 教員による論理削除(再受験を許可する。履歴・CSVエクスポートには残る)
+  leave_violation_count integer not null default 0, -- leave_grace_seconds以上の離脱が発生した回数(段階的アクションの基準・auto_pause解除後もリセットしない)
   created_at timestamptz default now()
 );
 
@@ -78,7 +92,8 @@ create table answers (
   id uuid primary key default gen_random_uuid(),
   session_id uuid not null references test_sessions(id) on delete cascade,
   question_id uuid not null references questions(id),
-  selected_choice integer check (selected_choice between 1 and 5),
+  selected_choice integer check (selected_choice between 1 and 10),
+  free_text_response text,              -- question_type = 'free_text' の場合の学生の入力
   is_correct boolean,
   answered_at timestamptz,
   unique (session_id, question_id)

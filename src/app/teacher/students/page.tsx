@@ -114,7 +114,12 @@ export default function TeacherStudentsPage() {
   return (
     <div className="flex flex-col gap-8">
       <section className="rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-lg font-bold text-slate-800">学生CSV一括登録</h2>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-slate-800">学生CSV一括登録</h2>
+          <a href="/api/teacher/students/template" className="text-sm text-blue-600 hover:underline">
+            テンプレートをダウンロード
+          </a>
+        </div>
         <p className="mb-4 text-sm text-slate-600">
           フォーマット: 1行目はヘッダー行「学生ID,氏名,パスワード,クラス名,読み方,国籍,性別」、2行目以降にデータを入力してください(末尾4列は空欄可・UTF-8
           BOM付き推奨)

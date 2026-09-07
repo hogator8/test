@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { toCsvWithBom } from "@/lib/csv";
+import { choiceValues } from "@/lib/questions";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -15,9 +16,14 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   // concurrently instead of as a sequential waterfall.
   const [testResult, questionsResult, sessionsResult] = await Promise.all([
     supabase.from("tests").select("*").eq("id", testId).single(),
+    // Deliberately NOT filtered by deleted_at either: a question later
+    // removed via CSV replace still needs its column so past answers to it
+    // remain visible in the export.
     supabase
       .from("questions")
-      .select("id, section_number, question_number, choice_1, choice_2, choice_3, choice_4, choice_5")
+      .select(
+        "id, section_number, question_number, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10"
+      )
       .eq("test_id", testId)
       .order("section_number", { ascending: true })
       .order("question_number", { ascending: true }),
@@ -66,8 +72,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
           .in("id", studentIds)
       : Promise.resolve({ data: [] as StudentInfo[] }),
     sessionIds.length > 0
-      ? supabase.from("answers").select("session_id, question_id, selected_choice, is_correct").in("session_id", sessionIds)
-      : Promise.resolve({ data: [] as { session_id: string; question_id: string; selected_choice: number | null; is_correct: boolean | null }[] }),
+      ? supabase
+          .from("answers")
+          .select("session_id, question_id, selected_choice, free_text_response, is_correct")
+          .in("session_id", sessionIds)
+      : Promise.resolve({
+          data: [] as {
+            session_id: string;
+            question_id: string;
+            selected_choice: number | null;
+            free_text_response: string | null;
+            is_correct: boolean | null;
+          }[],
+        }),
     sessionIds.length > 0
       ? supabase.from("proctoring_logs").select("session_id, duration_seconds").in("session_id", sessionIds)
       : Promise.resolve({ data: [] as { session_id: string; duration_seconds: number | null }[] }),
@@ -78,11 +95,15 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     studentsById[st.id] = st;
   }
 
-  const answersBySession: Record<string, Record<string, { selected: number | null; correct: boolean | null }>> = {};
+  const answersBySession: Record<
+    string,
+    Record<string, { selected: number | null; freeText: string | null; correct: boolean | null }>
+  > = {};
   for (const a of answersResult.data ?? []) {
     if (!answersBySession[a.session_id]) answersBySession[a.session_id] = {};
     answersBySession[a.session_id][a.question_id] = {
       selected: a.selected_choice,
+      freeText: a.free_text_response,
       correct: a.is_correct,
     };
   }
@@ -134,11 +155,19 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     const questionCells: (string | number | null)[] = [];
     for (const q of questions ?? []) {
       const a = answers[q.id];
+      if (q.question_type === "free_text") {
+        if (!a || a.freeText === null || a.freeText === undefined || a.freeText === "") {
+          questionCells.push("未回答", "");
+          continue;
+        }
+        questionCells.push(a.freeText, a.correct ? "○" : "×");
+        continue;
+      }
       if (!a || a.selected === null || a.selected === undefined) {
         questionCells.push("未回答", "");
         continue;
       }
-      const choiceText = (q as any)[`choice_${a.selected}`] ?? String(a.selected);
+      const choiceText = choiceValues(q)[a.selected - 1] ?? String(a.selected);
       questionCells.push(choiceText, a.correct ? "○" : "×");
     }
 

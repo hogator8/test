@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { QuestionText } from "@/components/QuestionText";
 
 interface Choice {
   index: number;
@@ -13,9 +14,12 @@ interface QuestionFeedback {
   id: string;
   questionNumber: number;
   questionText: string;
+  questionType: "multiple_choice" | "free_text";
   choices: Choice[];
   selectedChoice: number | null;
-  correctChoice: number;
+  correctChoice: number | null;
+  freeTextResponse: string | null;
+  freeTextCorrectAnswer: string | null;
   isCorrect: boolean;
 }
 
@@ -91,36 +95,51 @@ export default function StudentHistoryDetailPage() {
                 key={q.id}
                 className={`rounded-lg p-4 shadow ${q.isCorrect ? "bg-green-50" : "bg-red-50"}`}
               >
-                <p className="notranslate mb-3 font-medium text-slate-800">
-                  問{q.questionNumber}. {q.questionText}
+                <p className="mb-3 font-medium text-slate-800">
+                  問{q.questionNumber}. <QuestionText text={q.questionText} />
                 </p>
-                <div className="flex flex-col gap-2">
-                  {q.choices.map((c) => {
-                    const isSelected = q.selectedChoice === c.index;
-                    const isCorrectChoice = q.correctChoice === c.index;
-                    return (
-                      <div
-                        key={c.index}
-                        className={`notranslate flex items-center justify-between rounded-md border px-3 py-2 ${
-                          isCorrectChoice
-                            ? "border-green-400 bg-green-100"
-                            : isSelected
-                              ? "border-red-400 bg-red-100"
-                              : "border-slate-200 bg-white"
-                        }`}
-                      >
-                        <span>{c.text}</span>
-                        <span className="flex gap-2 text-xs font-semibold">
-                          {isSelected && <span className="text-slate-600">あなたの解答</span>}
-                          {isCorrectChoice && <span className="text-green-700">正解</span>}
-                        </span>
-                      </div>
-                    );
-                  })}
-                  {q.selectedChoice === null && (
-                    <p className="text-xs font-semibold text-red-600">未回答でした</p>
-                  )}
-                </div>
+                {q.questionType === "free_text" ? (
+                  <div className="flex flex-col gap-2 text-sm">
+                    <p className="notranslate rounded-md border border-slate-200 bg-white px-3 py-2">
+                      あなたの解答: {q.freeTextResponse || "(未回答)"}
+                    </p>
+                    {!q.isCorrect && q.freeTextCorrectAnswer && (
+                      <p className="notranslate rounded-md border border-green-400 bg-green-100 px-3 py-2 text-green-800">
+                        正解例: {q.freeTextCorrectAnswer}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {q.choices.map((c) => {
+                      const isSelected = q.selectedChoice === c.index;
+                      const isCorrectChoice = q.correctChoice === c.index;
+                      return (
+                        <div
+                          key={c.index}
+                          className={`flex items-center justify-between rounded-md border px-3 py-2 ${
+                            isCorrectChoice
+                              ? "border-green-400 bg-green-100"
+                              : isSelected
+                                ? "border-red-400 bg-red-100"
+                                : "border-slate-200 bg-white"
+                          }`}
+                        >
+                          <span className="notranslate">
+                            <QuestionText text={c.text} />
+                          </span>
+                          <span className="flex gap-2 text-xs font-semibold">
+                            {isSelected && <span className="text-slate-600">あなたの解答</span>}
+                            {isCorrectChoice && <span className="text-green-700">正解</span>}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {q.selectedChoice === null && (
+                      <p className="text-xs font-semibold text-red-600">未回答でした</p>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

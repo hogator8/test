@@ -18,3 +18,9 @@ select,
 textarea {
   color-scheme: light;
 }
+
+/* Textbook-style typeface for question text/choices (受験画面・プレビュー・結果閲覧) */
+.font-kaisei {
+  font-family: "Kaisei Tokumin", serif;
+}
+

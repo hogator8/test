@@ -183,6 +183,13 @@ export default function TeacherTestDetailPage() {
         </div>
         <div className="flex items-center gap-3">
           <Link
+            href={`/teacher/tests/${params.id}/preview`}
+            target="_blank"
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            プレビュー
+          </Link>
+          <Link
             href={`/teacher/tests/${params.id}/edit`}
             className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
