@@ -65,6 +65,12 @@ export async function POST(req: NextRequest) {
   const pauseReleasePin = String(formData.get("pauseReleasePin") ?? "").trim();
   const startScreenMessage = String(formData.get("startScreenMessage") ?? "").trim();
   const showScoreToStudent = formData.get("showScoreToStudent") !== "false";
+  let assignedClasses: string[] = [];
+  try {
+    assignedClasses = JSON.parse(String(formData.get("assignedClasses") ?? "[]"));
+  } catch {
+    return NextResponse.json({ error: "対象クラスの形式が不正です" }, { status: 400 });
+  }
   const file = formData.get("file");
 
   if (!title) {
@@ -146,6 +152,7 @@ export async function POST(req: NextRequest) {
       pause_release_pin: pauseReleasePin || null,
       start_screen_message: startScreenMessage || null,
       show_score_to_student: showScoreToStudent,
+      assigned_classes: assignedClasses.length > 0 ? assignedClasses : null,
     })
     .select("id")
     .single();

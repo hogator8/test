@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { StagedActionsEditor } from "@/components/StagedActionsEditor";
+import { ClassPicker } from "@/components/ClassPicker";
 import { QuestionText } from "@/components/QuestionText";
 import { normalizeStagedActions, LeaveStage } from "@/lib/leaveStages";
 
@@ -23,6 +24,7 @@ interface TestDetail {
   pause_release_pin: string | null;
   start_screen_message: string | null;
   show_score_to_student: boolean;
+  assigned_classes: string[] | null;
 }
 
 interface RowError {
@@ -66,9 +68,18 @@ export default function EditTestPage() {
   const [pauseReleasePin, setPauseReleasePin] = useState("");
   const [startScreenMessage, setStartScreenMessage] = useState("");
   const [showScoreToStudent, setShowScoreToStudent] = useState(true);
+  const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+  const [assignedClasses, setAssignedClasses] = useState<string[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/teacher/students/classes")
+      .then((res) => res.json())
+      .then((data) => setAvailableClasses(data.classNames ?? []))
+      .catch(() => {});
+  }, []);
 
   const [sessionCount, setSessionCount] = useState(0);
   const [questions, setQuestions] = useState<RegisteredQuestion[]>([]);
@@ -134,6 +145,7 @@ export default function EditTestPage() {
         setPauseReleasePin(test.pause_release_pin ?? "");
         setStartScreenMessage(test.start_screen_message ?? "");
         setShowScoreToStudent(test.show_score_to_student);
+        setAssignedClasses(test.assigned_classes ?? []);
       })
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
@@ -164,6 +176,7 @@ export default function EditTestPage() {
           pauseReleasePin,
           startScreenMessage,
           showScoreToStudent,
+          assignedClasses,
         }),
       });
       const data = await res.json();
@@ -244,6 +257,11 @@ export default function EditTestPage() {
               required
             />
           </label>
+        </section>
+
+        <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
+          <h2 className="font-bold text-slate-800">対象クラス</h2>
+          <ClassPicker availableClasses={availableClasses} selectedClasses={assignedClasses} onChange={setAssignedClasses} />
         </section>
 
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">

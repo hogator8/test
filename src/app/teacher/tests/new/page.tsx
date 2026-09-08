@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { StagedActionsEditor } from "@/components/StagedActionsEditor";
+import { ClassPicker } from "@/components/ClassPicker";
 import type { LeaveStage } from "@/lib/leaveStages";
 
 interface RowError {
@@ -31,9 +32,18 @@ export default function NewTestPage() {
   const [pauseReleasePin, setPauseReleasePin] = useState("");
   const [startScreenMessage, setStartScreenMessage] = useState("");
   const [showScoreToStudent, setShowScoreToStudent] = useState(true);
+  const [availableClasses, setAvailableClasses] = useState<string[]>([]);
+  const [assignedClasses, setAssignedClasses] = useState<string[]>([]);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/teacher/students/classes")
+      .then((res) => res.json())
+      .then((data) => setAvailableClasses(data.classNames ?? []))
+      .catch(() => {});
+  }, []);
   const [rowErrors, setRowErrors] = useState<RowError[]>([]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -65,6 +75,7 @@ export default function NewTestPage() {
       formData.append("pauseReleasePin", pauseReleasePin);
       formData.append("startScreenMessage", startScreenMessage);
       formData.append("showScoreToStudent", String(showScoreToStudent));
+      formData.append("assignedClasses", JSON.stringify(assignedClasses));
       formData.append("file", file);
 
       const res = await fetch("/api/teacher/tests", { method: "POST", body: formData });
@@ -106,6 +117,11 @@ export default function NewTestPage() {
               required
             />
           </label>
+        </section>
+
+        <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
+          <h2 className="font-bold text-slate-800">対象クラス</h2>
+          <ClassPicker availableClasses={availableClasses} selectedClasses={assignedClasses} onChange={setAssignedClasses} />
         </section>
 
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
