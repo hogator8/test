@@ -8,7 +8,7 @@ interface HistoryItem {
   testTitle: string;
   submittedAt: string;
   totalScore: number | null;
-  totalQuestions: number;
+  maxScore: number;
   showScore: boolean;
 }
 
@@ -52,7 +52,7 @@ export default function StudentHistoryPage() {
                 <p className="notranslate font-semibold text-slate-800">{h.testTitle}</p>
                 <p className="text-sm text-slate-500">{new Date(h.submittedAt).toLocaleString("ja-JP")}</p>
                 <p className="mt-1 text-sm font-medium text-slate-700">
-                  {h.showScore ? `得点: ${h.totalScore ?? "-"} / ${h.totalQuestions}` : "得点非公開"}
+                  {h.showScore ? `${h.totalScore ?? "-"}点 / 満点${h.maxScore}点` : "得点非公開"}
                 </p>
               </>
             );

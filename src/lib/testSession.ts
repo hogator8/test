@@ -84,13 +84,35 @@ export function isTimeExpired(session: SessionWithTest, now: Date): boolean {
   return now.getTime() >= deadline;
 }
 
+/**
+ * Score = sum of points() for every correctly-answered question, not a raw
+ * correct-answer count. Computed once at submit time and stored on the
+ * session (see submitSession below); editing a question's points later
+ * never retroactively changes an already-submitted session's total_score.
+ */
 export async function computeScore(supabase: SupabaseClient, sessionId: string): Promise<number> {
   const { data, error } = await supabase
     .from("answers")
-    .select("is_correct")
+    .select("is_correct, questions(points)")
     .eq("session_id", sessionId);
   if (error) throw new Error(error.message);
-  return (data ?? []).filter((a) => a.is_correct === true).length;
+  return (data ?? []).reduce((sum, a) => {
+    if (a.is_correct !== true) return sum;
+    const q = a.questions as unknown as { points: number } | { points: number }[] | null;
+    const points = Array.isArray(q) ? q[0]?.points : q?.points;
+    return sum + (points ?? 1);
+  }, 0);
+}
+
+/** Perfect-score total for a test: the sum of points() across its currently active (non-deleted) questions. */
+export async function computeMaxScore(supabase: SupabaseClient, testId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from("questions")
+    .select("points")
+    .eq("test_id", testId)
+    .is("deleted_at", null);
+  if (error) throw new Error(error.message);
+  return (data ?? []).reduce((sum, q) => sum + (q.points ?? 1), 0);
 }
 
 export async function submitSession(

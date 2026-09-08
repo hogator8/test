@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     supabase
       .from("questions")
       .select(
-        "id, section_number, question_number, question_text, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10"
+        "id, section_number, question_number, points, question_text, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10"
       )
       .eq("test_id", session.test_id)
       .is("deleted_at", null)
@@ -99,6 +99,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     sections,
     answers: answerMap,
     totalQuestions: (questions ?? []).length,
+    maxScore: (questions ?? []).reduce((sum, q) => sum + (q.points ?? 1), 0),
     serverNow: new Date().toISOString(),
   });
 }

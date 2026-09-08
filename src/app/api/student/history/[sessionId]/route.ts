@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { verifyStudentToken, STUDENT_COOKIE } from "@/lib/auth";
 import { noStoreJson } from "@/lib/http";
 import { buildChoices } from "@/lib/questions";
+import { computeMaxScore } from "@/lib/testSession";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -47,11 +48,15 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     return NextResponse.json({ error: "このテストの結果は閲覧できません" }, { status: 403 });
   }
 
-  const [{ data: questions, error: questionsError }, { data: answers, error: answersError }] = await Promise.all([
+  const [
+    { data: questions, error: questionsError },
+    { data: answers, error: answersError },
+    maxScore,
+  ] = await Promise.all([
     supabase
       .from("questions")
       .select(
-        "id, section_number, question_number, question_text, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10, correct_answer, free_text_answer_1, free_text_answer_2, free_text_answer_3, free_text_answer_4, free_text_answer_5"
+        "id, section_number, question_number, points, question_text, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10, correct_answer, free_text_answer_1, free_text_answer_2, free_text_answer_3, free_text_answer_4, free_text_answer_5"
       )
       .eq("test_id", session.test_id)
       .order("section_number", { ascending: true })
@@ -60,6 +65,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
       .from("answers")
       .select("question_id, selected_choice, free_text_response, is_correct")
       .eq("session_id", session.id),
+    computeMaxScore(supabase, session.test_id),
   ]);
 
   if (questionsError) return NextResponse.json({ error: questionsError.message }, { status: 500 });
@@ -109,6 +115,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     submittedAt: session.submitted_at,
     totalScore: session.total_score,
     totalQuestions: (questions ?? []).length,
+    maxScore,
     sections,
   });
 }

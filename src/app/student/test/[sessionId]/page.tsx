@@ -62,6 +62,7 @@ interface SessionData {
   sections: Section[];
   answers: Record<string, AnswerState>;
   totalQuestions: number;
+  maxScore: number;
   serverNow: string;
 }
 
@@ -408,7 +409,7 @@ export default function StudentTestPage() {
         <p className="text-lg font-semibold text-green-700">提出が完了しました</p>
         {finalResult?.totalScore !== null && finalResult?.totalScore !== undefined && (
           <p className="text-slate-600">
-            得点: {finalResult.totalScore} / {data.totalQuestions}
+            {finalResult.totalScore}点 / 満点{data.maxScore}点
           </p>
         )}
         {finalResult?.autoSubmitted && (

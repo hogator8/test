@@ -44,6 +44,7 @@ create table questions (
   question_number integer not null,
   question_text text not null,
   question_type text not null default 'multiple_choice', -- 'multiple_choice' | 'free_text'
+  points integer not null default 1 check (points > 0), -- 配点(空欄設定時は1点として扱う)
   choice_1 text,
   choice_2 text,
   choice_3 text,

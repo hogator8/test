@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   const [{ data: tests }, { data: questions }] = await Promise.all([
     supabase.from("tests").select("id, title, show_score_to_student").in("id", testIds),
-    supabase.from("questions").select("test_id").in("test_id", testIds),
+    supabase.from("questions").select("test_id, points").in("test_id", testIds).is("deleted_at", null),
   ]);
 
   const testsById: Record<string, { title: string; show_score_to_student: boolean }> = {};
@@ -40,9 +40,9 @@ export async function GET(req: NextRequest) {
     testsById[t.id] = { title: t.title, show_score_to_student: t.show_score_to_student };
   }
 
-  const questionCountByTest: Record<string, number> = {};
+  const maxScoreByTest: Record<string, number> = {};
   for (const q of questions ?? []) {
-    questionCountByTest[q.test_id] = (questionCountByTest[q.test_id] ?? 0) + 1;
+    maxScoreByTest[q.test_id] = (maxScoreByTest[q.test_id] ?? 0) + (q.points ?? 1);
   }
 
   const history = (sessions ?? []).map((s) => {
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       testTitle: test?.title ?? "",
       submittedAt: s.submitted_at,
       totalScore: showScore ? s.total_score : null,
-      totalQuestions: questionCountByTest[s.test_id] ?? 0,
+      maxScore: maxScoreByTest[s.test_id] ?? 0,
       showScore,
     };
   });

@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     supabase
       .from("questions")
       .select(
-        "id, section_number, question_number, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10"
+        "id, section_number, question_number, points, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10, deleted_at"
       )
       .eq("test_id", testId)
       .order("section_number", { ascending: true })
@@ -123,6 +123,13 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     submitted: "提出済み",
   };
 
+  // 論理削除されていない問題のpointsの合計。編集で問題を差し替えても、既に提出済みの
+  // セッションのtotal_scoreは再計算しない(v11仕様)ため、満点は「現時点の」テスト構成
+  // を表す値として全行共通で出力する。
+  const maxScore = (questions ?? [])
+    .filter((q) => !q.deleted_at)
+    .reduce((sum, q) => sum + (q.points ?? 1), 0);
+
   const questionHeaders: string[] = [];
   for (const q of questions ?? []) {
     questionHeaders.push(`セクション${q.section_number}-問${q.question_number}回答`);
@@ -143,6 +150,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     "離脱合計時間(秒)",
     "自動提出フラグ",
     "合計得点",
+    "満点",
     ...questionHeaders,
     "削除フラグ",
   ];
@@ -185,6 +193,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
       leaveStats[s.id]?.durationSeconds ?? 0,
       s.auto_submitted ? "TRUE" : "FALSE",
       s.total_score ?? "",
+      maxScore,
       ...questionCells,
       s.deleted_at ? "削除済み" : "",
     ]);
@@ -214,6 +223,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
         "",
         "",
         "",
+        maxScore,
         ...questionCellsEmpty,
         "",
       ]);

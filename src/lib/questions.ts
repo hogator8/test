@@ -43,7 +43,7 @@ export function buildChoices(q: ChoiceSource): { index: number; text: string }[]
 }
 
 export const SELECT_QUESTION_COLUMNS =
-  "id, test_id, section_number, question_number, question_text, question_type, " +
+  "id, test_id, section_number, question_number, points, question_text, question_type, " +
   "choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10, " +
   "correct_answer, free_text_answer_1, free_text_answer_2, free_text_answer_3, free_text_answer_4, free_text_answer_5";
 
@@ -52,6 +52,7 @@ export interface QuestionRow extends ChoiceSource {
   test_id: string;
   section_number: number;
   question_number: number;
+  points: number;
   question_text: string;
   question_type: QuestionType;
   correct_answer: number | null;

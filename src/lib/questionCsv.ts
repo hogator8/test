@@ -10,6 +10,7 @@ export interface ParsedQuestionRow {
   row: number;
   section_number: number;
   question_number: number;
+  points: number;
   question_text: string;
   question_type: "multiple_choice" | "free_text";
   choice_1: string | null;
@@ -36,7 +37,7 @@ export function stripBom(text: string): string {
 
 /**
  * Column layout (0-indexed), matching the documented CSV format:
- * セクション番号,問題番号,問題文,選択肢1..10,正答,記述正答1..5
+ * セクション番号,問題番号,点数,問題文,選択肢1..10,正答,記述正答1..5
  */
 export function parseQuestionCsv(rawText: string): {
   errors: RowError[];
@@ -67,10 +68,11 @@ export function parseQuestionCsv(rawText: string): {
     const rowNum = idx + 2; // +1 for 1-indexing, +1 more for the skipped header row
     const sectionRaw = (cols[0] ?? "").trim();
     const questionRaw = (cols[1] ?? "").trim();
-    const questionText = (cols[2] ?? "").trim();
-    const choices = Array.from({ length: MAX_CHOICES }, (_, i) => (cols[3 + i] ?? "").trim());
-    const correctRaw = (cols[3 + MAX_CHOICES] ?? "").trim();
-    const freeTextAnswers = Array.from({ length: 5 }, (_, i) => (cols[3 + MAX_CHOICES + 1 + i] ?? "").trim());
+    const pointsRaw = (cols[2] ?? "").trim();
+    const questionText = (cols[3] ?? "").trim();
+    const choices = Array.from({ length: MAX_CHOICES }, (_, i) => (cols[4 + i] ?? "").trim());
+    const correctRaw = (cols[4 + MAX_CHOICES] ?? "").trim();
+    const freeTextAnswers = Array.from({ length: 5 }, (_, i) => (cols[4 + MAX_CHOICES + 1 + i] ?? "").trim());
 
     const sectionNumber = Number(sectionRaw);
     const questionNumber = Number(questionRaw);
@@ -83,6 +85,17 @@ export function parseQuestionCsv(rawText: string): {
       errors.push({ row: rowNum, message: "問題番号は正の整数で入力してください" });
       return;
     }
+
+    let points = 1;
+    if (pointsRaw !== "") {
+      const pointsNum = Number(pointsRaw);
+      if (!Number.isInteger(pointsNum) || pointsNum <= 0) {
+        errors.push({ row: rowNum, message: "点数は1以上の整数で入力してください(空欄の場合は1点)" });
+        return;
+      }
+      points = pointsNum;
+    }
+
     if (!questionText) {
       errors.push({ row: rowNum, message: "問題文が空です" });
       return;
@@ -135,6 +148,7 @@ export function parseQuestionCsv(rawText: string): {
       row: rowNum,
       section_number: sectionNumber,
       question_number: questionNumber,
+      points,
       question_text: questionText,
       question_type: questionType,
       choice_1: choices[0] || null,

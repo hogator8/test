@@ -76,6 +76,7 @@ export default function TeacherTestDetailPage() {
   const [test, setTest] = useState<TestDetail | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [totalQuestions, setTotalQuestions] = useState(0);
+  const [maxScore, setMaxScore] = useState(0);
   const [totalStudents, setTotalStudents] = useState(0);
   const [loading, setLoading] = useState(true);
   const [includeAll, setIncludeAll] = useState(false);
@@ -94,6 +95,7 @@ export default function TeacherTestDetailPage() {
         setTest(data.test);
         setSessions(data.sessions ?? []);
         setTotalQuestions(data.totalQuestions ?? 0);
+        setMaxScore(data.maxScore ?? 0);
         setTotalStudents(data.totalStudents ?? 0);
       });
   }, [params.id]);
@@ -206,7 +208,7 @@ export default function TeacherTestDetailPage() {
       </div>
 
       <section className="grid grid-cols-2 gap-4 rounded-lg bg-white p-6 shadow sm:grid-cols-4">
-        <Stat label="問題数" value={`${totalQuestions}問`} />
+        <Stat label="問題数" value={`${totalQuestions}問(満点${maxScore}点)`} />
         <Stat label="制限時間" value={test.time_limit_minutes ? `${test.time_limit_minutes}分` : "なし"} />
         <Stat label="受験数" value={`${sessions.length} / ${totalStudents}名`} />
         <Stat
@@ -289,7 +291,7 @@ export default function TeacherTestDetailPage() {
                     <td className="py-2 pr-4">{statusLabel[s.status] ?? s.status}</td>
                     <td className="py-2 pr-4">
                       {s.totalScore ?? "-"}
-                      {s.totalScore !== null ? ` / ${totalQuestions}` : ""}
+                      {s.totalScore !== null ? ` / ${maxScore}` : ""}
                     </td>
                     <td className="py-2 pr-4">{new Date(s.startedAt).toLocaleString("ja-JP")}</td>
                     <td className="py-2 pr-4">

@@ -34,6 +34,7 @@ interface RegisteredQuestion {
   id: string;
   sectionNumber: number;
   questionNumber: number;
+  points: number;
   questionText: string;
   questionType: string;
   choices: { index: number; text: string }[];
@@ -442,7 +443,7 @@ export default function EditTestPage() {
                     .map((q) => (
                       <div key={q.id} className="rounded-md border border-slate-200 p-3 text-sm">
                         <p className="font-medium text-slate-800">
-                          問{q.questionNumber}. <QuestionText text={q.questionText} />
+                          問{q.questionNumber}({q.points}点). <QuestionText text={q.questionText} />
                         </p>
                         {q.questionType === "free_text" ? (
                           <p className="mt-1 text-slate-600">
@@ -475,6 +476,7 @@ export default function EditTestPage() {
           </div>
           <p className="text-sm text-slate-600">
             新しい問題CSVをアップロードすると、既存の問題は内容が更新され、CSVに含まれない問題は削除されます(過去の回答データは保持されます)。
+            点数を変更した場合も、既に提出済みの学生の得点は変わらず、以降の判定にのみ反映されます。
           </p>
           <input ref={replaceFileInputRef} type="file" accept=".csv" className="text-sm" />
           {replaceErrorMsg && <p className="text-sm font-medium text-red-600">{replaceErrorMsg}</p>}

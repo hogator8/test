@@ -7,14 +7,15 @@ export const dynamic = "force-dynamic";
 
 /**
  * Column layout matches src/lib/questionCsv.ts exactly:
- * セクション番号,問題番号,問題文,選択肢1..10,正答,記述正答1..5
+ * セクション番号,問題番号,点数,問題文,選択肢1..10,正答,記述正答1..5
  */
 export async function GET() {
   const choiceHeaders = Array.from({ length: MAX_CHOICES }, (_, i) => `選択肢${i + 1}`);
   const freeTextHeaders = Array.from({ length: 5 }, (_, i) => `記述正答${i + 1}`);
-  const header = ["セクション番号", "問題番号", "問題文", ...choiceHeaders, "正答", ...freeTextHeaders];
+  const header = ["セクション番号", "問題番号", "点数", "問題文", ...choiceHeaders, "正答", ...freeTextHeaders];
 
   const sampleMultipleChoice = [
+    "1",
     "1",
     "1",
     "日本(にほん)の首都はどこですか。",
@@ -28,6 +29,7 @@ export async function GET() {
   ];
   const sampleFreeText = [
     "1",
+    "2",
     "2",
     "____に入る言葉を書いてください。「おはよう___」",
     ...Array(MAX_CHOICES).fill(""),
