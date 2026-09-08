@@ -16,13 +16,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // concurrently instead of one-by-one to avoid a slow request waterfall.
   // (Sessions exclude soft-deleted rows so a teacher-deleted record drops
   // out of this list - see supabase/migration_v4a.sql.)
-  const [testResult, questionCountResult, sessionsResult, totalStudentsResult] = await Promise.all([
+  const [testResult, questionsResult, sessionsResult, totalStudentsResult] = await Promise.all([
     supabase.from("tests").select("*").eq("id", testId).single(),
-    supabase
-      .from("questions")
-      .select("id", { count: "exact", head: true })
-      .eq("test_id", testId)
-      .is("deleted_at", null),
+    supabase.from("questions").select("points").eq("test_id", testId).is("deleted_at", null),
     supabase
       .from("test_sessions")
       .select("id, student_id, status, started_at, submitted_at, total_score, auto_submitted")
@@ -42,7 +38,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ error: sessionsError.message }, { status: 500 });
   }
 
-  const questionCount = questionCountResult.count;
+  const questions = questionsResult.data ?? [];
+  const questionCount = questions.length;
+  const maxScore = questions.reduce((sum, q) => sum + (q.points ?? 1), 0);
   const totalStudents = totalStudentsResult.count;
 
   // Fetch students and proctoring logs as two separate, unconditional
@@ -81,7 +79,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   return noStoreJson({
     test,
-    totalQuestions: questionCount ?? 0,
+    totalQuestions: questionCount,
+    maxScore,
     totalStudents: totalStudents ?? 0,
     sessions: (sessions ?? []).map((s) => ({
       id: s.id,

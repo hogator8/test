@@ -27,6 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       id: q.id,
       sectionNumber: q.section_number,
       questionNumber: q.question_number,
+      points: q.points,
       questionText: q.question_text,
       questionType: q.question_type,
       choices: buildChoices(q),

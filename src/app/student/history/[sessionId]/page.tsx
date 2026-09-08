@@ -33,6 +33,7 @@ interface HistoryDetail {
   submittedAt: string;
   totalScore: number | null;
   totalQuestions: number;
+  maxScore: number;
   sections: SectionFeedback[];
 }
 
@@ -77,8 +78,7 @@ export default function StudentHistoryDetailPage() {
         <div>
           <h1 className="notranslate text-xl font-bold text-slate-800">{data.testTitle}</h1>
           <p className="text-sm text-slate-500">
-            {new Date(data.submittedAt).toLocaleString("ja-JP")} ・ 得点: {data.totalScore ?? "-"} /{" "}
-            {data.totalQuestions}
+            {new Date(data.submittedAt).toLocaleString("ja-JP")} ・ {data.totalScore ?? "-"}点 / 満点{data.maxScore}点
           </p>
         </div>
         <Link href="/student/history" className="text-sm text-blue-600 hover:underline">
