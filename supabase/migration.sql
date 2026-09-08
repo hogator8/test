@@ -33,6 +33,7 @@ create table tests (
   start_screen_message text,            -- パスコード入力後の案内文言(nullならデフォルト文言)
   show_score_to_student boolean not null default true, -- falseなら提出後・受験履歴で得点/正誤を学生に見せない
   leave_staged_actions jsonb,           -- 段階的な離脱アクション。各要素は{action, count_threshold, duration_threshold_seconds}のオブジェクト(v7〜)。nullまたは空配列なら単一しきい値方式を使用
+  assigned_classes text[],              -- 対象クラス名の配列。nullまたは空配列なら全学生が対象
   created_at timestamptz default now()
 );
 

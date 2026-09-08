@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const { data: test, error: testError } = await supabase
     .from("tests")
-    .select("id")
+    .select("id, assigned_classes")
     .eq("passcode", passcode)
     .maybeSingle();
 
@@ -36,6 +36,23 @@ export async function POST(req: NextRequest) {
   }
   if (!test) {
     return NextResponse.json({ error: "パスコードが正しくありません" }, { status: 404 });
+  }
+
+  if (test.assigned_classes && test.assigned_classes.length > 0) {
+    const { data: student, error: studentError } = await supabase
+      .from("students")
+      .select("class_name")
+      .eq("id", payload.studentDbId)
+      .maybeSingle();
+    if (studentError) {
+      return NextResponse.json({ error: studentError.message }, { status: 500 });
+    }
+    if (!student?.class_name || !test.assigned_classes.includes(student.class_name)) {
+      return NextResponse.json(
+        { error: "このテストはあなたのクラスでは受験できません" },
+        { status: 403 }
+      );
+    }
   }
 
   // Only an active (non-deleted) session counts: if a teacher soft-deleted a

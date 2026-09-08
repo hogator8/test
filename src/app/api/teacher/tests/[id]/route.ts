@@ -113,6 +113,7 @@ interface UpdateTestBody {
   pauseReleasePin?: string | null;
   startScreenMessage?: string | null;
   showScoreToStudent?: boolean;
+  assignedClasses?: string[];
 }
 
 // Editing a test only changes how future leave-detection / time-limit
@@ -139,6 +140,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const pauseReleasePin = (body.pauseReleasePin ?? "").trim();
   const startScreenMessage = (body.startScreenMessage ?? "").trim();
   const showScoreToStudent = body.showScoreToStudent !== false;
+  const assignedClasses = Array.isArray(body.assignedClasses) ? body.assignedClasses : [];
 
   if (!title) {
     return NextResponse.json({ error: "テスト名を入力してください" }, { status: 400 });
@@ -210,6 +212,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       pause_release_pin: pauseReleasePin || null,
       start_screen_message: startScreenMessage || null,
       show_score_to_student: showScoreToStudent,
+      assigned_classes: assignedClasses.length > 0 ? assignedClasses : null,
     })
     .eq("id", testId)
     .select("id")
