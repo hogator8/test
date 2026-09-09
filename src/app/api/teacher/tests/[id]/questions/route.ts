@@ -3,13 +3,26 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { noStoreJson } from "@/lib/http";
 import { parseQuestionCsv } from "@/lib/questionCsv";
 import { SELECT_QUESTION_COLUMNS, buildChoices, QuestionRow } from "@/lib/questions";
+import { getTeacherContext } from "@/lib/org";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
+
+  const { data: test, error: testError } = await supabase
+    .from("tests")
+    .select("id")
+    .eq("id", params.id)
+    .eq("organization_id", context.organizationId)
+    .maybeSingle();
+  if (testError) return NextResponse.json({ error: testError.message }, { status: 500 });
+  if (!test) return NextResponse.json({ error: "テストが見つかりません" }, { status: 404 });
 
   const { data: questions, error } = await supabase
     .from("questions")
@@ -55,6 +68,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
  *    valid and past results keep showing what the student actually answered
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const testId = params.id;
   const formData = await req.formData();
   const file = formData.get("file");
@@ -73,6 +89,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const supabase = getSupabaseAdmin();
+
+  const { data: test, error: testError } = await supabase
+    .from("tests")
+    .select("id")
+    .eq("id", testId)
+    .eq("organization_id", context.organizationId)
+    .maybeSingle();
+  if (testError) return NextResponse.json({ error: testError.message }, { status: 500 });
+  if (!test) return NextResponse.json({ error: "テストが見つかりません" }, { status: 404 });
 
   const { data: existing, error: existingError } = await supabase
     .from("questions")

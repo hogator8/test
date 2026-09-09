@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { noStoreJson } from "@/lib/http";
+import { getTeacherContext } from "@/lib/org";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -22,6 +23,9 @@ interface UpdateStudentBody {
 // human-readable login ID, so renaming studentId here does not affect any
 // existing test session.
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
   const studentDbId = params.id;
 
@@ -56,6 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     .from("students")
     .update(update)
     .eq("id", studentDbId)
+    .eq("organization_id", context.organizationId)
     .select("id, student_id, name, class_name, reading, nationality, gender, created_at")
     .maybeSingle();
 
@@ -75,7 +80,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return noStoreJson({ ok: true, student: updated });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
   const studentDbId = params.id;
 
@@ -85,7 +93,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const { error, count } = await supabase
     .from("students")
     .delete({ count: "exact" })
-    .eq("id", studentDbId);
+    .eq("id", studentDbId)
+    .eq("organization_id", context.organizationId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

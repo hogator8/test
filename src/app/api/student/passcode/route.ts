@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const { data: test, error: testError } = await supabase
     .from("tests")
-    .select("id, assigned_classes, randomize_questions, randomize_choices")
+    .select("id, organization_id, assigned_classes, randomize_questions, randomize_choices")
     .eq("passcode", passcode)
     .maybeSingle();
 
@@ -39,16 +39,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "パスコードが正しくありません" }, { status: 404 });
   }
 
+  // tests.passcode is still globally unique (not per-organization), so a
+  // student must also belong to the same organization as the test -
+  // otherwise they could take another school's test just by
+  // guessing/knowing its passcode.
+  const { data: student, error: studentError } = await supabase
+    .from("students")
+    .select("class_name, organization_id")
+    .eq("id", payload.studentDbId)
+    .maybeSingle();
+  if (studentError) {
+    return NextResponse.json({ error: studentError.message }, { status: 500 });
+  }
+  if (!student || student.organization_id !== test.organization_id) {
+    return NextResponse.json({ error: "パスコードが正しくありません" }, { status: 404 });
+  }
+
   if (test.assigned_classes && test.assigned_classes.length > 0) {
-    const { data: student, error: studentError } = await supabase
-      .from("students")
-      .select("class_name")
-      .eq("id", payload.studentDbId)
-      .maybeSingle();
-    if (studentError) {
-      return NextResponse.json({ error: studentError.message }, { status: 500 });
-    }
-    if (!student?.class_name || !test.assigned_classes.includes(student.class_name)) {
+    if (!student.class_name || !test.assigned_classes.includes(student.class_name)) {
       return NextResponse.json(
         { error: "このテストはあなたのクラスでは受験できません" },
         { status: 403 }

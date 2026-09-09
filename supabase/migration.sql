@@ -4,9 +4,46 @@
 -- (Next.js API Routes) using the service role key. The browser never talks
 -- to Supabase directly.
 
+-- 組織(教員ごとのページ。1組織 = 管理者1名 + 招待された教員複数名)
+create table organizations (
+  id uuid primary key default gen_random_uuid(),
+  is_legacy boolean not null default false, -- v15移行時に既存データを引き継ぐために作成する組織
+  created_at timestamptz default now()
+);
+
+-- 組織への所属関係(ロール付き)。1人のユーザーが複数組織に所属できる
+create table organization_members (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null default 'teacher', -- 'admin' | 'teacher'
+  created_at timestamptz default now(),
+  unique (organization_id, user_id)
+);
+
+-- 招待(まだ承諾されていないもの)
+create table organization_invites (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id) on delete cascade,
+  email text not null,
+  invited_by uuid references auth.users(id),
+  created_at timestamptz default now(),
+  accepted_at timestamptz
+);
+
+create index idx_organization_members_org_id on organization_members(organization_id);
+create index idx_organization_members_user_id on organization_members(user_id);
+create index idx_organization_invites_org_id on organization_invites(organization_id);
+create index idx_organization_invites_email on organization_invites(email);
+
+-- 新規インストール時にも1つ用意しておく(登録APIは「レガシー組織にまだ管理者が
+-- いなければそこに登録し、いれば新規組織を作る」という分岐をするため)。
+insert into organizations (is_legacy) values (true);
+
 -- 学生マスタ(本システム専用。出席管理システムとは非連携)
 create table students (
   id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id), -- 所属組織(教員のページ)
   student_id text unique not null,      -- ログインID
   name text not null,
   password_hash text not null,          -- bcryptでハッシュ化して保存
@@ -20,6 +57,7 @@ create table students (
 -- テスト
 create table tests (
   id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references organizations(id), -- 所属組織(教員のページ)
   title text not null,
   passcode text unique not null,        -- テスト1つにつき共通パスコード(教員が任意指定)
   time_limit_minutes integer,           -- nullの場合は制限時間なし
@@ -125,6 +163,8 @@ create table session_resume_logs (
   resumed_at timestamptz not null default now()
 );
 
+create index idx_students_organization_id on students(organization_id);
+create index idx_tests_organization_id on tests(organization_id);
 create index idx_questions_test_id on questions(test_id);
 create index idx_test_sessions_test_id on test_sessions(test_id);
 create index idx_test_sessions_student_id on test_sessions(student_id);

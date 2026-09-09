@@ -18,6 +18,9 @@ function getSecret(): Uint8Array {
 
 export interface TeacherTokenPayload extends JWTPayload {
   role: "teacher";
+  userId: string; // Supabase auth.users.id
+  organizationId: string; // organization currently being viewed
+  orgRole: "admin" | "teacher"; // this user's role within organizationId
 }
 
 export interface StudentTokenPayload extends JWTPayload {
@@ -27,8 +30,10 @@ export interface StudentTokenPayload extends JWTPayload {
   name: string;
 }
 
-export async function signTeacherToken(): Promise<string> {
-  return new SignJWT({ role: "teacher" })
+export async function signTeacherToken(
+  payload: Omit<TeacherTokenPayload, "role">
+): Promise<string> {
+  return new SignJWT({ role: "teacher", ...payload })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("8h")
