@@ -15,6 +15,7 @@ interface Choice {
 interface Question {
   id: string;
   questionNumber: number;
+  displayNumber: number;
   questionText: string;
   questionType: "multiple_choice" | "free_text";
   choices: Choice[];
@@ -42,6 +43,7 @@ interface TestInfo {
   leaveWarningMessage: string | null;
   startScreenMessage: string | null;
   showScoreToStudent: boolean;
+  randomizeQuestions: boolean;
 }
 
 const DEFAULT_WARNING_MESSAGE =
@@ -471,7 +473,10 @@ export default function StudentTestPage() {
             {section.questions.map((q) => (
               <div key={q.id} className="rounded-lg bg-white p-4 shadow">
                 <p className="mb-3 font-medium text-slate-800">
-                  問{q.questionNumber}. <QuestionText text={q.questionText} />
+                  {data.test.randomizeQuestions
+                    ? `${q.displayNumber}問目/全${data.totalQuestions}問中`
+                    : `問${q.questionNumber}.`}{" "}
+                  <QuestionText text={q.questionText} />
                 </p>
                 {q.questionType === "free_text" ? (
                   <input

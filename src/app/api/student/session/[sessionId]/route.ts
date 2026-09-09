@@ -62,6 +62,12 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     sectionsMap.get(q.section_number)!.push(q);
   }
 
+  // Sequential 1-based position across the whole test in display order - used
+  // as a stand-in for the CSV question_number when that number is hidden
+  // (randomized tests), so students still have a "N of totalQuestions"
+  // progress indicator without it leaking the underlying CSV order.
+  let displayNumber = 0;
+
   const sections = Array.from(sectionsMap.entries())
     .sort(([a], [b]) => a - b)
     .map(([sectionNumber, qs]) => ({
@@ -69,6 +75,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
       questions: qs.map((q) => ({
         id: q.id,
         questionNumber: q.question_number,
+        displayNumber: ++displayNumber,
         questionText: q.question_text,
         questionType: q.question_type,
         choices: applyChoiceOrder(buildChoices(q), session.choice_orders?.[q.id]),
@@ -96,6 +103,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
       leaveWarningMessage: session.test.leave_warning_message,
       startScreenMessage: session.test.start_screen_message,
       showScoreToStudent: session.test.show_score_to_student,
+      randomizeQuestions: session.test.randomize_questions,
       // pause_release_pin is intentionally never sent to the client - only
       // the resume API verifies it server-side.
     },

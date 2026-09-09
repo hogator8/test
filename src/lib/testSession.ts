@@ -33,6 +33,7 @@ export interface SessionWithTest {
     pause_release_pin: string | null;
     start_screen_message: string | null;
     show_score_to_student: boolean;
+    randomize_questions: boolean;
   };
 }
 
@@ -48,7 +49,7 @@ export async function loadSessionForStudent(
   const { data, error } = await supabase
     .from("test_sessions")
     .select(
-      "id, student_id, test_id, status, started_at, submitted_at, total_score, auto_submitted, leave_violation_count, leave_stage_reached, current_stage_started_at, question_order, choice_orders, tests(id, title, time_limit_minutes, leave_detection_enabled, leave_grace_seconds, leave_count_threshold, leave_duration_threshold_seconds, leave_action, leave_staged_actions, leave_warning_message, pause_release_pin, start_screen_message, show_score_to_student)"
+      "id, student_id, test_id, status, started_at, submitted_at, total_score, auto_submitted, leave_violation_count, leave_stage_reached, current_stage_started_at, question_order, choice_orders, tests(id, title, time_limit_minutes, leave_detection_enabled, leave_grace_seconds, leave_count_threshold, leave_duration_threshold_seconds, leave_action, leave_staged_actions, leave_warning_message, pause_release_pin, start_screen_message, show_score_to_student, randomize_questions)"
     )
     .eq("id", sessionId)
     .maybeSingle();
