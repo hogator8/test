@@ -3,12 +3,16 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { noStoreJson } from "@/lib/http";
 import { validateLeaveSettings } from "@/lib/testValidation";
 import type { LeaveStage } from "@/lib/leaveStages";
+import { getTeacherContext } from "@/lib/org";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
   const testId = params.id;
 
@@ -17,7 +21,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // (Sessions exclude soft-deleted rows so a teacher-deleted record drops
   // out of this list - see supabase/migration_v4a.sql.)
   const [testResult, questionsResult, sessionsResult, totalStudentsResult] = await Promise.all([
-    supabase.from("tests").select("*").eq("id", testId).single(),
+    supabase.from("tests").select("*").eq("id", testId).eq("organization_id", context.organizationId).single(),
     supabase.from("questions").select("points").eq("test_id", testId).is("deleted_at", null),
     supabase
       .from("test_sessions")
@@ -25,7 +29,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
       .eq("test_id", testId)
       .is("deleted_at", null)
       .order("started_at", { ascending: true }),
-    supabase.from("students").select("id", { count: "exact", head: true }),
+    supabase
+      .from("students")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", context.organizationId),
   ]);
 
   const { data: test, error: testError } = testResult;
@@ -122,6 +129,9 @@ interface UpdateTestBody {
 // judgements are made; it never rewrites proctoring_logs, session_resume_logs
 // or answers that were already recorded under the old settings.
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
   const testId = params.id;
 
@@ -221,6 +231,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       randomize_choices: randomizeChoices,
     })
     .eq("id", testId)
+    .eq("organization_id", context.organizationId)
     .select("id")
     .maybeSingle();
 
@@ -237,7 +248,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
   const testId = params.id;
 
@@ -247,7 +261,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   const { error, count } = await supabase
     .from("tests")
     .delete({ count: "exact" })
-    .eq("id", testId);
+    .eq("id", testId)
+    .eq("organization_id", context.organizationId);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

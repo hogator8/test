@@ -5,7 +5,17 @@ export const config = {
   matcher: ["/teacher/:path*", "/student/:path*", "/api/teacher/:path*", "/api/student/:path*"],
 };
 
-const TEACHER_PUBLIC_PATHS = new Set(["/teacher/login", "/api/teacher/login"]);
+const TEACHER_PUBLIC_PATHS = new Set([
+  "/teacher/login",
+  "/api/teacher/login",
+  "/teacher/register",
+  "/api/teacher/register",
+  "/teacher/forgot-password",
+  "/teacher/reset-password",
+  "/teacher/accept-invite",
+  "/api/teacher/accept-invite",
+  "/api/teacher/select-org",
+]);
 const STUDENT_PUBLIC_PATHS = new Set(["/student/login", "/api/student/login"]);
 
 export async function middleware(req: NextRequest) {

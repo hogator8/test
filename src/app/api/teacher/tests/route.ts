@@ -4,16 +4,21 @@ import { noStoreJson } from "@/lib/http";
 import { parseQuestionCsv } from "@/lib/questionCsv";
 import { validateLeaveSettings } from "@/lib/testValidation";
 import type { LeaveStage } from "@/lib/leaveStages";
+import { getTeacherContext } from "@/lib/org";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
   const { data: tests, error } = await supabase
     .from("tests")
     .select("id, title, passcode, time_limit_minutes, created_at")
+    .eq("organization_id", context.organizationId)
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -43,6 +48,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const formData = await req.formData();
 
   const title = String(formData.get("title") ?? "").trim();
@@ -141,6 +149,7 @@ export async function POST(req: NextRequest) {
   const { data: test, error: insertTestError } = await supabase
     .from("tests")
     .insert({
+      organization_id: context.organizationId,
       title,
       passcode,
       time_limit_minutes: timeLimitMinutes,

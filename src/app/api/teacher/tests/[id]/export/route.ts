@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { toCsvWithBom } from "@/lib/csv";
 import { choiceValues } from "@/lib/questions";
+import { getTeacherContext } from "@/lib/org";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
   const testId = params.id;
   const includeAll = req.nextUrl.searchParams.get("includeAll") === "true";
@@ -15,7 +19,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   // test / questions / sessions are independent of one another - fetch them
   // concurrently instead of as a sequential waterfall.
   const [testResult, questionsResult, sessionsResult] = await Promise.all([
-    supabase.from("tests").select("*").eq("id", testId).single(),
+    supabase.from("tests").select("*").eq("id", testId).eq("organization_id", context.organizationId).single(),
     // Deliberately NOT filtered by deleted_at either: a question later
     // removed via CSV replace still needs its column so past answers to it
     // remain visible in the export.
@@ -202,7 +206,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   if (includeAll) {
     const { data: allStudents } = await supabase
       .from("students")
-      .select("id, student_id, name, class_name, reading, nationality, gender");
+      .select("id, student_id, name, class_name, reading, nationality, gender")
+      .eq("organization_id", context.organizationId);
     const testedStudentDbIds = new Set((sessions ?? []).map((s) => s.student_id));
     const questionCellsEmpty: (string | number | null)[] = [];
     for (const _q of questions ?? []) questionCellsEmpty.push("", "");

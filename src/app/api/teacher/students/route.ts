@@ -1,16 +1,21 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { noStoreJson } from "@/lib/http";
+import { getTeacherContext } from "@/lib/org";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("students")
     .select("id, student_id, name, class_name, reading, nationality, gender, created_at")
+    .eq("organization_id", context.organizationId)
     .order("student_id", { ascending: true });
 
   if (error) {

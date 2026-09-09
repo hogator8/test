@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Papa from "papaparse";
 import bcrypt from "bcryptjs";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getTeacherContext } from "@/lib/org";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -17,6 +18,9 @@ function stripBom(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const context = await getTeacherContext(req);
+  if (!context) return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
+
   const formData = await req.formData();
   const file = formData.get("file");
 
@@ -132,6 +136,7 @@ export async function POST(req: NextRequest) {
 
   const insertRows = await Promise.all(
     parsedStudents.map(async (s) => ({
+      organization_id: context.organizationId,
       student_id: s.studentId,
       name: s.name,
       password_hash: await bcrypt.hash(s.password, 10),
