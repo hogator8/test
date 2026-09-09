@@ -114,6 +114,8 @@ interface UpdateTestBody {
   startScreenMessage?: string | null;
   showScoreToStudent?: boolean;
   assignedClasses?: string[];
+  randomizeQuestions?: boolean;
+  randomizeChoices?: boolean;
 }
 
 // Editing a test only changes how future leave-detection / time-limit
@@ -141,6 +143,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const startScreenMessage = (body.startScreenMessage ?? "").trim();
   const showScoreToStudent = body.showScoreToStudent !== false;
   const assignedClasses = Array.isArray(body.assignedClasses) ? body.assignedClasses : [];
+  const randomizeQuestions = Boolean(body.randomizeQuestions);
+  const randomizeChoices = Boolean(body.randomizeChoices);
 
   if (!title) {
     return NextResponse.json({ error: "テスト名を入力してください" }, { status: 400 });
@@ -213,6 +217,8 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       start_screen_message: startScreenMessage || null,
       show_score_to_student: showScoreToStudent,
       assigned_classes: assignedClasses.length > 0 ? assignedClasses : null,
+      randomize_questions: randomizeQuestions,
+      randomize_choices: randomizeChoices,
     })
     .eq("id", testId)
     .select("id")

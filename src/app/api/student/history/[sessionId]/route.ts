@@ -4,6 +4,7 @@ import { verifyStudentToken, STUDENT_COOKIE } from "@/lib/auth";
 import { noStoreJson } from "@/lib/http";
 import { buildChoices } from "@/lib/questions";
 import { computeMaxScore } from "@/lib/testSession";
+import { applyQuestionOrder, applyChoiceOrder } from "@/lib/randomize";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
 
   const { data: session, error: sessionError } = await supabase
     .from("test_sessions")
-    .select("id, student_id, test_id, status, submitted_at, total_score, deleted_at")
+    .select("id, student_id, test_id, status, submitted_at, total_score, deleted_at, question_order, choice_orders")
     .eq("id", params.sessionId)
     .maybeSingle();
 
@@ -83,8 +84,10 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
     };
   }
 
-  const sectionsMap = new Map<number, typeof questions>();
-  for (const q of questions ?? []) {
+  const orderedQuestions = applyQuestionOrder(questions ?? [], session.question_order);
+
+  const sectionsMap = new Map<number, typeof orderedQuestions>();
+  for (const q of orderedQuestions) {
     if (!sectionsMap.has(q.section_number)) sectionsMap.set(q.section_number, []);
     sectionsMap.get(q.section_number)!.push(q);
   }
@@ -100,7 +103,7 @@ export async function GET(req: NextRequest, { params }: { params: { sessionId: s
           questionNumber: q.question_number,
           questionText: q.question_text,
           questionType: q.question_type,
-          choices: buildChoices(q),
+          choices: applyChoiceOrder(buildChoices(q), session.choice_orders?.[q.id]),
           selectedChoice: a?.selected ?? null,
           correctChoice: q.correct_answer,
           freeTextResponse: a?.freeText ?? null,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { verifyStudentToken, STUDENT_COOKIE } from "@/lib/auth";
+import { generateQuestionOrder, generateChoiceOrders } from "@/lib/randomize";
 
 // Never statically cache this route - it must always hit Supabase for
 // live data (Next.js Route Handlers can otherwise be cached by default).
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabaseAdmin();
   const { data: test, error: testError } = await supabase
     .from("tests")
-    .select("id, assigned_classes")
+    .select("id, assigned_classes, randomize_questions, randomize_choices")
     .eq("passcode", passcode)
     .maybeSingle();
 
@@ -77,9 +78,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, sessionId: existingSession.id });
   }
 
+  // Generated once here and reused for the lifetime of the session (never
+  // regenerated on reload/resume) so the student always sees the same
+  // order. A later re-take creates a brand-new session row via this same
+  // path, so it naturally gets a freshly generated order too.
+  let questionOrder: string[] | null = null;
+  let choiceOrders: Record<string, number[]> | null = null;
+  if (test.randomize_questions || test.randomize_choices) {
+    const { data: activeQuestions, error: questionsError } = await supabase
+      .from("questions")
+      .select("id, section_number, question_number, question_type, choice_1, choice_2, choice_3, choice_4, choice_5, choice_6, choice_7, choice_8, choice_9, choice_10")
+      .eq("test_id", test.id)
+      .is("deleted_at", null);
+    if (questionsError) {
+      return NextResponse.json({ error: questionsError.message }, { status: 500 });
+    }
+    if (test.randomize_questions) {
+      questionOrder = generateQuestionOrder(activeQuestions ?? [], true);
+    }
+    if (test.randomize_choices) {
+      choiceOrders = generateChoiceOrders(activeQuestions ?? [], true);
+    }
+  }
+
   const { data: newSession, error: createError } = await supabase
     .from("test_sessions")
-    .insert({ student_id: payload.studentDbId, test_id: test.id })
+    .insert({
+      student_id: payload.studentDbId,
+      test_id: test.id,
+      question_order: questionOrder,
+      choice_orders: choiceOrders,
+    })
     .select("id")
     .single();
 

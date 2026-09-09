@@ -34,6 +34,8 @@ export default function NewTestPage() {
   const [showScoreToStudent, setShowScoreToStudent] = useState(true);
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
   const [assignedClasses, setAssignedClasses] = useState<string[]>([]);
+  const [randomizeQuestions, setRandomizeQuestions] = useState(false);
+  const [randomizeChoices, setRandomizeChoices] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -76,6 +78,8 @@ export default function NewTestPage() {
       formData.append("startScreenMessage", startScreenMessage);
       formData.append("showScoreToStudent", String(showScoreToStudent));
       formData.append("assignedClasses", JSON.stringify(assignedClasses));
+      formData.append("randomizeQuestions", String(randomizeQuestions));
+      formData.append("randomizeChoices", String(randomizeChoices));
       formData.append("file", file);
 
       const res = await fetch("/api/teacher/tests", { method: "POST", body: formData });
@@ -122,6 +126,26 @@ export default function NewTestPage() {
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
           <h2 className="font-bold text-slate-800">対象クラス</h2>
           <ClassPicker availableClasses={availableClasses} selectedClasses={assignedClasses} onChange={setAssignedClasses} />
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-lg bg-white p-6 shadow">
+          <h2 className="font-bold text-slate-800">出題順(カンニング防止)</h2>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={randomizeQuestions}
+              onChange={(e) => setRandomizeQuestions(e.target.checked)}
+            />
+            問題をランダムにする(学生ごとに問題の順番をシャッフルします。セクションの区切りは維持されます)
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={randomizeChoices}
+              onChange={(e) => setRandomizeChoices(e.target.checked)}
+            />
+            選択肢をランダムにする(学生ごとに選択肢の順番をシャッフルします)
+          </label>
         </section>
 
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
