@@ -474,7 +474,7 @@ export default function StudentTestPage() {
               <div key={q.id} className="rounded-lg bg-white p-4 shadow">
                 <p className="mb-3 font-medium text-slate-800">
                   {data.test.randomizeQuestions
-                    ? `${q.displayNumber}問目/全${data.totalQuestions}問中`
+                    ? `${q.displayNumber}/${data.totalQuestions}`
                     : `問${q.questionNumber}.`}{" "}
                   <QuestionText text={q.questionText} />
                 </p>
