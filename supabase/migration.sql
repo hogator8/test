@@ -34,6 +34,8 @@ create table tests (
   show_score_to_student boolean not null default true, -- falseなら提出後・受験履歴で得点/正誤を学生に見せない
   leave_staged_actions jsonb,           -- 段階的な離脱アクション。各要素は{action, count_threshold, duration_threshold_seconds}のオブジェクト(v7〜)。nullまたは空配列なら単一しきい値方式を使用
   assigned_classes text[],              -- 対象クラス名の配列。nullまたは空配列なら全学生が対象
+  randomize_questions boolean not null default false, -- trueなら学生ごとにセクション内で問題順をシャッフル
+  randomize_choices boolean not null default false,   -- trueなら学生ごとに選択肢の表示順をシャッフル(記述式には影響しない)
   created_at timestamptz default now()
 );
 
@@ -81,6 +83,8 @@ create table test_sessions (
   leave_violation_count integer not null default 0, -- leave_grace_seconds以上の離脱が発生した回数(全期間の累計。単一しきい値方式の基準・auto_pause解除後もリセットしない)
   leave_stage_reached integer not null default 0, -- 段階的アクションで既に発動済みの段階数(0=未発動。auto_pause解除後もリセットしない)
   current_stage_started_at timestamptz not null default now(), -- 現在の段階が始まった時刻(段階0の間はセッション開始時刻と同じ)。段階的アクションの回数・時間しきい値は、この時刻以降のproctoring_logsのみを対象に都度集計する
+  question_order jsonb,                 -- セッション開始時に1回だけ生成する問題表示順(問題IDの配列。セクション内シャッフル済み)。randomize_questionsが無効ならnull
+  choice_orders jsonb,                  -- セッション開始時に1回だけ生成する選択肢表示順({問題ID: 元の選択肢番号の配列})。randomize_choicesが無効ならnull
   created_at timestamptz default now()
 );
 

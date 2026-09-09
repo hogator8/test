@@ -71,6 +71,8 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "対象クラスの形式が不正です" }, { status: 400 });
   }
+  const randomizeQuestions = formData.get("randomizeQuestions") === "true";
+  const randomizeChoices = formData.get("randomizeChoices") === "true";
   const file = formData.get("file");
 
   if (!title) {
@@ -153,6 +155,8 @@ export async function POST(req: NextRequest) {
       start_screen_message: startScreenMessage || null,
       show_score_to_student: showScoreToStudent,
       assigned_classes: assignedClasses.length > 0 ? assignedClasses : null,
+      randomize_questions: randomizeQuestions,
+      randomize_choices: randomizeChoices,
     })
     .select("id")
     .single();

@@ -25,6 +25,8 @@ interface TestDetail {
   start_screen_message: string | null;
   show_score_to_student: boolean;
   assigned_classes: string[] | null;
+  randomize_questions: boolean;
+  randomize_choices: boolean;
 }
 
 interface RowError {
@@ -70,6 +72,8 @@ export default function EditTestPage() {
   const [showScoreToStudent, setShowScoreToStudent] = useState(true);
   const [availableClasses, setAvailableClasses] = useState<string[]>([]);
   const [assignedClasses, setAssignedClasses] = useState<string[]>([]);
+  const [randomizeQuestions, setRandomizeQuestions] = useState(false);
+  const [randomizeChoices, setRandomizeChoices] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -146,6 +150,8 @@ export default function EditTestPage() {
         setStartScreenMessage(test.start_screen_message ?? "");
         setShowScoreToStudent(test.show_score_to_student);
         setAssignedClasses(test.assigned_classes ?? []);
+        setRandomizeQuestions(test.randomize_questions);
+        setRandomizeChoices(test.randomize_choices);
       })
       .catch((e) => setLoadError(e.message))
       .finally(() => setLoading(false));
@@ -177,6 +183,8 @@ export default function EditTestPage() {
           startScreenMessage,
           showScoreToStudent,
           assignedClasses,
+          randomizeQuestions,
+          randomizeChoices,
         }),
       });
       const data = await res.json();
@@ -262,6 +270,29 @@ export default function EditTestPage() {
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
           <h2 className="font-bold text-slate-800">対象クラス</h2>
           <ClassPicker availableClasses={availableClasses} selectedClasses={assignedClasses} onChange={setAssignedClasses} />
+        </section>
+
+        <section className="flex flex-col gap-3 rounded-lg bg-white p-6 shadow">
+          <h2 className="font-bold text-slate-800">出題順(カンニング防止)</h2>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={randomizeQuestions}
+              onChange={(e) => setRandomizeQuestions(e.target.checked)}
+            />
+            問題をランダムにする(学生ごとに問題の順番をシャッフルします。セクションの区切りは維持されます)
+          </label>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input
+              type="checkbox"
+              checked={randomizeChoices}
+              onChange={(e) => setRandomizeChoices(e.target.checked)}
+            />
+            選択肢をランダムにする(学生ごとに選択肢の順番をシャッフルします)
+          </label>
+          <p className="text-xs text-slate-500">
+            変更は今後、新たに受験を開始する学生にのみ適用されます。既に受験中・提出済みのセッションの表示順は変わりません。
+          </p>
         </section>
 
         <section className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
