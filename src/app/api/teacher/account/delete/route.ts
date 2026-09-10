@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase";
+import { getSupabaseAdmin, verifyPassword } from "@/lib/supabase";
 import { getTeacherContext, getUserSummary } from "@/lib/org";
 import { TEACHER_COOKIE } from "@/lib/auth";
 
@@ -23,6 +23,13 @@ export const dynamic = "force-dynamic";
  * organizations/students/tests rows themselves are left in place but become
  * unreachable from any teacher UI, since no membership points at them
  * anymore.
+ *
+ * Password verification below deliberately goes through verifyPassword()'s
+ * own throwaway client rather than calling auth.signInWithPassword() on the
+ * shared getSupabaseAdmin() client - doing that would swap this client's
+ * own Authorization header from the service_role key to the caller's own
+ * access token (see verifyPassword()'s doc comment), which previously
+ * caused the very permission error this route is trying to avoid.
  */
 export async function POST(req: NextRequest) {
   const context = await getTeacherContext(req);
@@ -47,11 +54,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "アカウント情報の取得に失敗しました" }, { status: 500 });
   }
 
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: summary.email,
-    password,
-  });
-  if (signInError) {
+  const passwordValid = await verifyPassword(summary.email, password);
+  if (!passwordValid) {
     return NextResponse.json({ error: "パスワードが正しくありません" }, { status: 401 });
   }
 
