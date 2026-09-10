@@ -4,25 +4,35 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+interface TestOption {
+  organizationId: string;
+  title: string;
+}
+
 export default function StudentPasscodePage() {
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [options, setOptions] = useState<TestOption[] | null>(null);
   const router = useRouter();
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitPasscode(organizationId?: string) {
     setError(null);
     setLoading(true);
     try {
       const res = await fetch("/api/student/passcode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passcode }),
+        body: JSON.stringify({ passcode, organizationId }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "パスコードが正しくありません");
+        setOptions(null);
+        return;
+      }
+      if (data.needsSelection) {
+        setOptions(data.options ?? []);
         return;
       }
       router.push(`/student/test/${data.sessionId}`);
@@ -31,6 +41,43 @@ export default function StudentPasscodePage() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await submitPasscode();
+  }
+
+  if (options) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
+        <h1 className="mb-6 text-center text-xl font-bold text-slate-800">
+          同じパスコードのテストが複数見つかりました
+        </h1>
+        <div className="flex flex-col gap-3 rounded-lg bg-white p-6 shadow">
+          <p className="text-sm text-slate-600">受験するテストを選んでください</p>
+          {options.map((opt) => (
+            <button
+              key={opt.organizationId}
+              type="button"
+              disabled={loading}
+              onClick={() => submitPasscode(opt.organizationId)}
+              className="notranslate rounded-md border border-slate-300 px-4 py-3 text-left font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {opt.title}
+            </button>
+          ))}
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <button
+            type="button"
+            onClick={() => setOptions(null)}
+            className="mt-2 text-sm text-slate-500 hover:underline"
+          >
+            戻る
+          </button>
+        </div>
+      </main>
+    );
   }
 
   return (

@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyTeacherToken, verifyStudentToken, TEACHER_COOKIE, STUDENT_COOKIE } from "@/lib/auth";
+import {
+  verifyTeacherToken,
+  verifyStudentToken,
+  verifyStudentCandidatesToken,
+  TEACHER_COOKIE,
+  STUDENT_COOKIE,
+  STUDENT_CANDIDATES_COOKIE,
+} from "@/lib/auth";
 
 export const config = {
   matcher: ["/teacher/:path*", "/student/:path*", "/api/teacher/:path*", "/api/student/:path*"],
@@ -17,6 +24,9 @@ const TEACHER_PUBLIC_PATHS = new Set([
   "/api/teacher/select-org",
 ]);
 const STUDENT_PUBLIC_PATHS = new Set(["/student/login", "/api/student/login"]);
+// Passcode entry only needs the login-candidates cookie (which organization
+// hasn't been decided yet at that point) - see STUDENT_CANDIDATES_COOKIE.
+const STUDENT_CANDIDATE_PATHS = new Set(["/student/passcode", "/api/student/passcode"]);
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -31,6 +41,12 @@ export async function middleware(req: NextRequest) {
 
   if (pathname.startsWith("/student") || pathname.startsWith("/api/student")) {
     if (STUDENT_PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+    if (STUDENT_CANDIDATE_PATHS.has(pathname)) {
+      const token = req.cookies.get(STUDENT_CANDIDATES_COOKIE)?.value;
+      const payload = await verifyStudentCandidatesToken(token);
+      if (!payload) return denyOrRedirect(req, pathname, "/student/login");
+      return NextResponse.next();
+    }
     const token = req.cookies.get(STUDENT_COOKIE)?.value;
     const payload = await verifyStudentToken(token);
     if (!payload) return denyOrRedirect(req, pathname, "/student/login");
