@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { verifyStudentToken, STUDENT_COOKIE } from "@/lib/auth";
+import { signStudentToken, verifyStudentCandidatesToken, STUDENT_COOKIE, STUDENT_CANDIDATES_COOKIE } from "@/lib/auth";
 import { generateQuestionOrder, generateChoiceOrders } from "@/lib/randomize";
 
 // Never statically cache this route - it must always hit Supabase for
@@ -8,12 +8,14 @@ import { generateQuestionOrder, generateChoiceOrders } from "@/lib/randomize";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const payload = await verifyStudentToken(req.cookies.get(STUDENT_COOKIE)?.value);
-  if (!payload) {
+  const candidatesPayload = await verifyStudentCandidatesToken(
+    req.cookies.get(STUDENT_CANDIDATES_COOKIE)?.value
+  );
+  if (!candidatesPayload) {
     return NextResponse.json({ error: "ログインし直してください" }, { status: 401 });
   }
 
-  let body: { passcode?: string };
+  let body: { passcode?: string; organizationId?: string };
   try {
     body = await req.json();
   } catch {
@@ -26,32 +28,55 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
-  const { data: test, error: testError } = await supabase
+  const orgIds = candidatesPayload.candidates.map((c) => c.organizationId);
+
+  // Since v16, tests.passcode is only unique per-organization, so the same
+  // passcode can legitimately match tests in more than one of the student's
+  // candidate organizations - narrow to those the student actually logged
+  // into, then let them pick if more than one still matches.
+  const { data: matchingTests, error: testError } = await supabase
     .from("tests")
-    .select("id, organization_id, assigned_classes, randomize_questions, randomize_choices")
+    .select("id, organization_id, title, assigned_classes, randomize_questions, randomize_choices")
     .eq("passcode", passcode)
-    .maybeSingle();
+    .in("organization_id", orgIds);
 
   if (testError) {
     return NextResponse.json({ error: testError.message }, { status: 500 });
   }
-  if (!test) {
+  if (!matchingTests || matchingTests.length === 0) {
     return NextResponse.json({ error: "パスコードが正しくありません" }, { status: 404 });
   }
 
-  // tests.passcode is still globally unique (not per-organization), so a
-  // student must also belong to the same organization as the test -
-  // otherwise they could take another school's test just by
-  // guessing/knowing its passcode.
+  let test = matchingTests[0];
+  if (matchingTests.length > 1) {
+    if (!body.organizationId) {
+      return NextResponse.json({
+        ok: true,
+        needsSelection: true,
+        options: matchingTests.map((t) => ({ organizationId: t.organization_id, title: t.title })),
+      });
+    }
+    const chosen = matchingTests.find((t) => t.organization_id === body.organizationId);
+    if (!chosen) {
+      return NextResponse.json({ error: "パスコードが正しくありません" }, { status: 404 });
+    }
+    test = chosen;
+  }
+
+  const candidate = candidatesPayload.candidates.find((c) => c.organizationId === test.organization_id);
+  if (!candidate) {
+    return NextResponse.json({ error: "パスコードが正しくありません" }, { status: 404 });
+  }
+
   const { data: student, error: studentError } = await supabase
     .from("students")
-    .select("class_name, organization_id")
-    .eq("id", payload.studentDbId)
+    .select("id, student_id, name, class_name")
+    .eq("id", candidate.studentDbId)
     .maybeSingle();
   if (studentError) {
     return NextResponse.json({ error: studentError.message }, { status: 500 });
   }
-  if (!student || student.organization_id !== test.organization_id) {
+  if (!student) {
     return NextResponse.json({ error: "パスコードが正しくありません" }, { status: 404 });
   }
 
@@ -64,13 +89,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Now that the organization/student pair is confirmed, resolve the
+  // session context - this overwrites any previously-resolved cookie (e.g.
+  // from a prior test taken via the HOME flow, possibly in a different
+  // organization), while the candidates cookie itself is left untouched so
+  // HOME can re-enter this same disambiguation step again later.
+  const token = await signStudentToken({
+    studentDbId: student.id,
+    studentId: student.student_id,
+    name: student.name,
+  });
+
   // Only an active (non-deleted) session counts: if a teacher soft-deleted a
   // previous session for this student/test pair, this lookup finds nothing
   // and a fresh session is created below, allowing a re-take.
   const { data: existingSession, error: sessionError } = await supabase
     .from("test_sessions")
     .select("id, status")
-    .eq("student_id", payload.studentDbId)
+    .eq("student_id", student.id)
     .eq("test_id", test.id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -83,7 +119,9 @@ export async function POST(req: NextRequest) {
     if (existingSession.status === "submitted") {
       return NextResponse.json({ error: "このテストは受験済みです" }, { status: 409 });
     }
-    return NextResponse.json({ ok: true, sessionId: existingSession.id });
+    const res = NextResponse.json({ ok: true, sessionId: existingSession.id });
+    setResolvedCookie(res, token);
+    return res;
   }
 
   // Generated once here and reused for the lifetime of the session (never
@@ -112,7 +150,7 @@ export async function POST(req: NextRequest) {
   const { data: newSession, error: createError } = await supabase
     .from("test_sessions")
     .insert({
-      student_id: payload.studentDbId,
+      student_id: student.id,
       test_id: test.id,
       question_order: questionOrder,
       choice_orders: choiceOrders,
@@ -124,5 +162,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: createError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, sessionId: newSession.id });
+  const res = NextResponse.json({ ok: true, sessionId: newSession.id });
+  setResolvedCookie(res, token);
+  return res;
+}
+
+function setResolvedCookie(res: NextResponse, token: string) {
+  res.cookies.set(STUDENT_COOKIE, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 12,
+  });
 }

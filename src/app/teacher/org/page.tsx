@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getSupabaseBrowser } from "@/lib/supabaseClient";
 
 interface Member {
@@ -16,6 +17,20 @@ interface Me {
   organizationId: string;
   orgRole: "admin" | "teacher";
   orgAdminName: string;
+}
+
+interface OtherTeacher {
+  userId: string;
+  name: string;
+  email: string;
+}
+
+interface AdminOrgInfo {
+  organizationId: string;
+  orgLabel: string;
+  otherTeachers: OtherTeacher[];
+  studentCount: number;
+  testCount: number;
 }
 
 export default function TeacherOrgPage() {
@@ -39,6 +54,19 @@ export default function TeacherOrgPage() {
   const [inviteErr, setInviteErr] = useState<string | null>(null);
 
   const [removingId, setRemovingId] = useState<string | null>(null);
+
+  const router = useRouter();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteChecking, setDeleteChecking] = useState(false);
+  const [adminOrgs, setAdminOrgs] = useState<AdminOrgInfo[] | null>(null);
+  const [deleteCheckErr, setDeleteCheckErr] = useState<string | null>(null);
+  const [transferSelections, setTransferSelections] = useState<Record<string, string>>({});
+  const [transferringOrgId, setTransferringOrgId] = useState<string | null>(null);
+  const [transferErr, setTransferErr] = useState<string | null>(null);
+  const [deleteConsent, setDeleteConsent] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -154,6 +182,85 @@ export default function TeacherOrgPage() {
       alert("通信エラーが発生しました");
     } finally {
       setRemovingId(null);
+    }
+  }
+
+  async function loadDeleteCheck() {
+    setDeleteChecking(true);
+    setDeleteCheckErr(null);
+    try {
+      const res = await fetch("/api/teacher/account/delete-check");
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteCheckErr(data.error ?? "読み込みに失敗しました");
+        return;
+      }
+      setAdminOrgs(data.adminOrgs ?? []);
+    } catch {
+      setDeleteCheckErr("通信エラーが発生しました");
+    } finally {
+      setDeleteChecking(false);
+    }
+  }
+
+  function handleOpenDelete() {
+    setDeleteOpen(true);
+    setDeleteConsent(false);
+    setDeletePassword("");
+    setDeleteErr(null);
+    loadDeleteCheck();
+  }
+
+  async function handleTransfer(organizationId: string) {
+    const newAdminUserId = transferSelections[organizationId];
+    if (!newAdminUserId) return;
+    setTransferErr(null);
+    setTransferringOrgId(organizationId);
+    try {
+      const res = await fetch("/api/teacher/account/transfer-admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId, newAdminUserId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTransferErr(data.error ?? "移譲に失敗しました");
+        return;
+      }
+      await loadDeleteCheck();
+    } catch {
+      setTransferErr("通信エラーが発生しました");
+    } finally {
+      setTransferringOrgId(null);
+    }
+  }
+
+  async function handleDeleteAccount() {
+    setDeleteErr(null);
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/teacher/account/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDeleteErr(data.error ?? "削除に失敗しました");
+        return;
+      }
+      try {
+        await getSupabaseBrowser().auth.signOut();
+      } catch {
+        // Our own cookie is already cleared server-side; a client-side
+        // sign-out failure shouldn't block returning to the login screen.
+      }
+      router.push("/teacher/login");
+      router.refresh();
+    } catch {
+      setDeleteErr("通信エラーが発生しました");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -284,6 +391,175 @@ export default function TeacherOrgPage() {
           </tbody>
         </table>
       </section>
+
+      <section className="mt-8 rounded-lg border border-red-200 bg-white p-6 shadow">
+        <h2 className="mb-4 font-semibold text-red-700">アカウントを削除</h2>
+        {!deleteOpen ? (
+          <button
+            type="button"
+            onClick={handleOpenDelete}
+            className="rounded-md border border-red-300 px-4 py-2 font-semibold text-red-600 hover:bg-red-50"
+          >
+            アカウントを削除する
+          </button>
+        ) : (
+          <DeleteAccountFlow
+            checking={deleteChecking}
+            checkErr={deleteCheckErr}
+            adminOrgs={adminOrgs}
+            transferSelections={transferSelections}
+            setTransferSelections={setTransferSelections}
+            transferringOrgId={transferringOrgId}
+            transferErr={transferErr}
+            onTransfer={handleTransfer}
+            deleteConsent={deleteConsent}
+            setDeleteConsent={setDeleteConsent}
+            deletePassword={deletePassword}
+            setDeletePassword={setDeletePassword}
+            deleting={deleting}
+            deleteErr={deleteErr}
+            onDelete={handleDeleteAccount}
+            onCancel={() => setDeleteOpen(false)}
+          />
+        )}
+      </section>
     </main>
+  );
+}
+
+function DeleteAccountFlow({
+  checking,
+  checkErr,
+  adminOrgs,
+  transferSelections,
+  setTransferSelections,
+  transferringOrgId,
+  transferErr,
+  onTransfer,
+  deleteConsent,
+  setDeleteConsent,
+  deletePassword,
+  setDeletePassword,
+  deleting,
+  deleteErr,
+  onDelete,
+  onCancel,
+}: {
+  checking: boolean;
+  checkErr: string | null;
+  adminOrgs: AdminOrgInfo[] | null;
+  transferSelections: Record<string, string>;
+  setTransferSelections: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  transferringOrgId: string | null;
+  transferErr: string | null;
+  onTransfer: (organizationId: string) => void;
+  deleteConsent: boolean;
+  setDeleteConsent: (v: boolean) => void;
+  deletePassword: string;
+  setDeletePassword: (v: string) => void;
+  deleting: boolean;
+  deleteErr: string | null;
+  onDelete: () => void;
+  onCancel: () => void;
+}) {
+  if (checking) {
+    return <p className="text-slate-500">確認中...</p>;
+  }
+  if (checkErr) {
+    return <p className="text-red-600">{checkErr}</p>;
+  }
+  if (!adminOrgs) return null;
+
+  const pendingTransferOrgs = adminOrgs.filter((o) => o.otherTeachers.length > 0);
+  const soloOrgs = adminOrgs.filter((o) => o.otherTeachers.length === 0);
+
+  if (pendingTransferOrgs.length > 0) {
+    return (
+      <div className="flex flex-col gap-4">
+        <p className="text-slate-700">
+          あなたが管理者のページには他のメンバーがいます。削除する前に、管理者を引き継ぐ人を選んでください。
+        </p>
+        {pendingTransferOrgs.map((org) => (
+          <div key={org.organizationId} className="rounded-md border border-slate-200 p-4">
+            <p className="mb-2 font-medium text-slate-800">{org.orgLabel}</p>
+            <div className="flex items-center gap-3">
+              <select
+                className="rounded-md border border-slate-300 px-3 py-2"
+                value={transferSelections[org.organizationId] ?? ""}
+                onChange={(e) =>
+                  setTransferSelections((prev) => ({ ...prev, [org.organizationId]: e.target.value }))
+                }
+              >
+                <option value="">教員を選択</option>
+                {org.otherTeachers.map((t) => (
+                  <option key={t.userId} value={t.userId}>
+                    {t.name}({t.email})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!transferSelections[org.organizationId] || transferringOrgId === org.organizationId}
+                onClick={() => onTransfer(org.organizationId)}
+                className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {transferringOrgId === org.organizationId ? "移譲中..." : "管理者を移譲する"}
+              </button>
+            </div>
+          </div>
+        ))}
+        {transferErr && <p className="text-sm text-red-600">{transferErr}</p>}
+        <button type="button" onClick={onCancel} className="self-start text-sm text-slate-500 hover:underline">
+          キャンセル
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {soloOrgs.length > 0 && (
+        <div className="rounded-md bg-amber-50 p-4 text-sm text-amber-800">
+          {soloOrgs.map((org) => (
+            <p key={org.organizationId} className="mb-1">
+              このページ({org.orgLabel})には学生{org.studentCount}名、テスト{org.testCount}件のデータがあります。
+              削除すると、このデータには誰もアクセスできなくなります(データベースから完全に消去されるわけではありませんが、事実上復元できません)。
+            </p>
+          ))}
+          <label className="mt-2 flex items-center gap-2 font-medium">
+            <input
+              type="checkbox"
+              checked={deleteConsent}
+              onChange={(e) => setDeleteConsent(e.target.checked)}
+            />
+            上記の内容を理解し、削除に同意します
+          </label>
+        </div>
+      )}
+
+      <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+        パスワード(確認のため再入力)
+        <input
+          type="password"
+          className="rounded-md border border-slate-300 px-3 py-2"
+          value={deletePassword}
+          onChange={(e) => setDeletePassword(e.target.value)}
+        />
+      </label>
+      {deleteErr && <p className="text-sm text-red-600">{deleteErr}</p>}
+      <div className="flex gap-3">
+        <button
+          type="button"
+          disabled={deleting || !deletePassword || (soloOrgs.length > 0 && !deleteConsent)}
+          onClick={onDelete}
+          className="rounded-md bg-red-600 px-4 py-2 font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+        >
+          {deleting ? "削除中..." : "本当にアカウントを削除する"}
+        </button>
+        <button type="button" onClick={onCancel} className="text-sm text-slate-500 hover:underline">
+          キャンセル
+        </button>
+      </div>
+    </div>
   );
 }

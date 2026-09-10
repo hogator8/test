@@ -108,9 +108,14 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = getSupabaseAdmin();
+  // student_id is only unique per-organization (v16), so this duplicate
+  // pre-check must be scoped to the caller's organization too - otherwise a
+  // student_id already used by a different organization would be wrongly
+  // rejected here even though the DB itself would happily allow it.
   const { data: existing, error: fetchError } = await supabase
     .from("students")
     .select("student_id")
+    .eq("organization_id", context.organizationId)
     .in(
       "student_id",
       parsedStudents.map((s) => s.studentId)

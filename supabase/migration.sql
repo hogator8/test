@@ -26,7 +26,7 @@ create table organization_invites (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id) on delete cascade,
   email text not null,
-  invited_by uuid references auth.users(id),
+  invited_by uuid references auth.users(id) on delete set null, -- 招待した本人が退会しても招待履歴自体は残す
   created_at timestamptz default now(),
   accepted_at timestamptz
 );
@@ -44,14 +44,15 @@ insert into organizations (is_legacy) values (true);
 create table students (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id), -- 所属組織(教員のページ)
-  student_id text unique not null,      -- ログインID
+  student_id text not null,             -- ログインID(組織単位でユニーク。組織をまたいで同じIDを使うことは可能)
   name text not null,
   password_hash text not null,          -- bcryptでハッシュ化して保存
   class_name text,                      -- クラス名(任意)
   reading text,                         -- ふりがな(任意)
   nationality text,                     -- 国籍(任意)
   gender text,                          -- 性別(任意)
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique (organization_id, student_id)
 );
 
 -- テスト
@@ -59,7 +60,7 @@ create table tests (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references organizations(id), -- 所属組織(教員のページ)
   title text not null,
-  passcode text unique not null,        -- テスト1つにつき共通パスコード(教員が任意指定)
+  passcode text not null,               -- テスト1つにつき共通パスコード(教員が任意指定。組織単位でユニーク)
   time_limit_minutes integer,           -- nullの場合は制限時間なし
   leave_detection_enabled boolean not null default true,
   leave_grace_seconds integer not null default 3,       -- これ未満の離脱は無視
@@ -74,7 +75,8 @@ create table tests (
   assigned_classes text[],              -- 対象クラス名の配列。nullまたは空配列なら全学生が対象
   randomize_questions boolean not null default false, -- trueなら学生ごとにセクション内で問題順をシャッフル
   randomize_choices boolean not null default false,   -- trueなら学生ごとに選択肢の表示順をシャッフル(記述式には影響しない)
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  unique (organization_id, passcode)
 );
 
 -- 問題(セクション番号・問題番号で並び順を管理)
@@ -164,7 +166,9 @@ create table session_resume_logs (
 );
 
 create index idx_students_organization_id on students(organization_id);
+create index idx_students_student_id on students(student_id); -- 組織をまたいだログイン時の学生ID検索用
 create index idx_tests_organization_id on tests(organization_id);
+create index idx_tests_passcode on tests(passcode); -- 組織候補に絞ったパスコード検索用
 create index idx_questions_test_id on questions(test_id);
 create index idx_test_sessions_test_id on test_sessions(test_id);
 create index idx_test_sessions_student_id on test_sessions(student_id);
