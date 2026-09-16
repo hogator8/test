@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 interface Student {
   id: string;
@@ -19,6 +19,23 @@ interface RowError {
   message: string;
 }
 
+type SortKey = "student_id" | "name" | "class_name" | "reading" | "nationality" | "gender" | "sessionCount";
+
+const sortColumns: { key: SortKey; label: string }[] = [
+  { key: "student_id", label: "学生ID" },
+  { key: "name", label: "氏名" },
+  { key: "class_name", label: "クラス名" },
+  { key: "reading", label: "読み方" },
+  { key: "nationality", label: "国籍" },
+  { key: "gender", label: "性別" },
+  { key: "sessionCount", label: "受験記録" },
+];
+
+function sortValue(s: Student, key: SortKey): string | number {
+  if (key === "sessionCount") return s.sessionCount;
+  return s[key] ?? "";
+}
+
 export default function TeacherStudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +46,14 @@ export default function TeacherStudentsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+
+  const [sortKey, setSortKey] = useState<SortKey>("student_id");
+  const [sortAsc, setSortAsc] = useState(true);
+  const [classFilter, setClassFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   async function loadStudents() {
     setLoading(true);
@@ -105,9 +130,107 @@ export default function TeacherStudentsPage() {
         alert(data.error ?? "削除に失敗しました");
         return;
       }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(s.id);
+        return next;
+      });
       await loadStudents();
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  function handleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortAsc((prev) => !prev);
+    } else {
+      setSortKey(key);
+      setSortAsc(true);
+    }
+  }
+
+  const classOptions = useMemo(() => {
+    return Array.from(
+      new Set(students.map((s) => s.class_name).filter((c): c is string => !!c && c.trim() !== ""))
+    ).sort((a, b) => a.localeCompare(b, "ja"));
+  }, [students]);
+
+  const visibleStudents = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    const filtered = students.filter((s) => {
+      if (classFilter !== "all" && (s.class_name ?? "") !== classFilter) return false;
+      if (
+        query &&
+        !s.student_id.toLowerCase().includes(query) &&
+        !s.name.toLowerCase().includes(query)
+      ) {
+        return false;
+      }
+      return true;
+    });
+    return [...filtered].sort((a, b) => {
+      const av = sortValue(a, sortKey);
+      const bv = sortValue(b, sortKey);
+      if (av < bv) return sortAsc ? -1 : 1;
+      if (av > bv) return sortAsc ? 1 : -1;
+      return 0;
+    });
+  }, [students, classFilter, searchQuery, sortKey, sortAsc]);
+
+  const allVisibleSelected = visibleStudents.length > 0 && visibleStudents.every((s) => selectedIds.has(s.id));
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        for (const s of visibleStudents) next.delete(s.id);
+        return next;
+      }
+      const next = new Set(prev);
+      for (const s of visibleStudents) next.add(s.id);
+      return next;
+    });
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    const selected = students.filter((s) => selectedIds.has(s.id));
+    if (selected.length === 0) return;
+    const withSessions = selected.filter((s) => s.sessionCount > 0).length;
+    const confirmed = confirm(
+      `選択した${selected.length}名の学生を削除しますか?\n` +
+        (withSessions > 0
+          ? `うち${withSessions}名には受験記録があります。削除するとその受験記録・回答・離脱ログもすべて削除されます。\n`
+          : "") +
+        "この操作は元に戻せません。"
+    );
+    if (!confirmed) return;
+
+    setBulkDeleting(true);
+    try {
+      const res = await fetch("/api/teacher/students", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error ?? "削除に失敗しました");
+        return;
+      }
+      setSelectedIds(new Set());
+      await loadStudents();
+    } finally {
+      setBulkDeleting(false);
     }
   }
 
@@ -154,29 +277,89 @@ export default function TeacherStudentsPage() {
       </section>
 
       <section className="rounded-lg bg-white p-6 shadow">
-        <h2 className="mb-4 text-lg font-bold text-slate-800">登録済み学生一覧 ({students.length}名)</h2>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-slate-800">登録済み学生一覧 ({students.length}名)</h2>
+          <div className="flex items-center gap-3">
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="rounded-md border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {bulkDeleting ? "削除中..." : `選択した学生を削除 (${selectedIds.size}名)`}
+              </button>
+            )}
+            <button
+              onClick={() => setAddOpen(true)}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              学生を追加
+            </button>
+          </div>
+        </div>
+
+        {students.length > 0 && (
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="学生ID・氏名で検索"
+              className="notranslate rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+            />
+            <select
+              value={classFilter}
+              onChange={(e) => setClassFilter(e.target.value)}
+              className="notranslate rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+            >
+              <option value="all">すべてのクラス</option>
+              {classOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {loading ? (
           <p className="text-slate-500">読み込み中...</p>
         ) : students.length === 0 ? (
           <p className="text-slate-500">登録済みの学生はいません</p>
+        ) : visibleStudents.length === 0 ? (
+          <p className="text-slate-500">条件に一致する学生はいません</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-slate-500">
-                  <th className="py-2 pr-4">学生ID</th>
-                  <th className="py-2 pr-4">氏名</th>
-                  <th className="py-2 pr-4">クラス名</th>
-                  <th className="py-2 pr-4">読み方</th>
-                  <th className="py-2 pr-4">国籍</th>
-                  <th className="py-2 pr-4">性別</th>
-                  <th className="py-2 pr-4">受験記録</th>
+                  <th className="py-2 pr-4">
+                    <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAll} />
+                  </th>
+                  {sortColumns.map((col) => (
+                    <th key={col.key} className="py-2 pr-4">
+                      <button
+                        onClick={() => handleSort(col.key)}
+                        className="flex items-center gap-1 font-medium hover:text-slate-800"
+                      >
+                        {col.label}
+                        {sortKey === col.key && <span>{sortAsc ? "▲" : "▼"}</span>}
+                      </button>
+                    </th>
+                  ))}
                   <th className="py-2 pr-4"></th>
                 </tr>
               </thead>
               <tbody>
-                {students.map((s) => (
+                {visibleStudents.map((s) => (
                   <tr key={s.id} className="border-b border-slate-100">
+                    <td className="py-2 pr-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(s.id)}
+                        onChange={() => toggleSelect(s.id)}
+                      />
+                    </td>
                     <td className="py-2 pr-4 notranslate">{s.student_id}</td>
                     <td className="py-2 pr-4 notranslate">{s.name}</td>
                     <td className="py-2 pr-4 notranslate">{s.class_name ?? "-"}</td>
@@ -218,6 +401,17 @@ export default function TeacherStudentsPage() {
             // Apply the row Postgres just confirmed immediately, rather than
             // waiting on a second GET to reflect it.
             setStudents((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
+            await loadStudents();
+          }}
+        />
+      )}
+
+      {addOpen && (
+        <AddStudentDialog
+          onClose={() => setAddOpen(false)}
+          onAdded={async (created) => {
+            setAddOpen(false);
+            setStudents((prev) => [...prev, { ...created, sessionCount: 0 }]);
             await loadStudents();
           }}
         />
@@ -356,6 +550,135 @@ function EditStudentDialog({
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? "保存中..." : "保存する"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AddStudentDialog({
+  onClose,
+  onAdded,
+}: {
+  onClose: () => void;
+  onAdded: (created: Omit<Student, "sessionCount">) => void;
+}) {
+  const [studentId, setStudentId] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [className, setClassName] = useState("");
+  const [reading, setReading] = useState("");
+  const [nationality, setNationality] = useState("");
+  const [gender, setGender] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/teacher/students", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId, name, password, className, reading, nationality, gender }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "登録に失敗しました");
+        return;
+      }
+      onAdded(data.student);
+    } catch {
+      setError("通信エラーが発生しました");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
+        <h3 className="mb-4 text-lg font-bold text-slate-800">学生を追加</h3>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            学生ID
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={studentId}
+              onChange={(e) => setStudentId(e.target.value)}
+              required
+              autoFocus
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            氏名
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            パスワード
+            <input
+              type="password"
+              className="rounded-md border border-slate-300 px-3 py-2"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            クラス名(任意)
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={className}
+              onChange={(e) => setClassName(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            読み方(任意)
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={reading}
+              onChange={(e) => setReading(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            国籍(任意)
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={nationality}
+              onChange={(e) => setNationality(e.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
+            性別(任意)
+            <input
+              className="rounded-md border border-slate-300 px-3 py-2 notranslate"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+            />
+          </label>
+          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              キャンセル
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? "登録中..." : "登録する"}
             </button>
           </div>
         </form>
