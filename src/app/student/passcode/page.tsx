@@ -82,10 +82,12 @@ export default function StudentPasscodePage() {
 
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-4">
-      <h1 className="mb-6 text-center text-xl font-bold text-slate-800">テストのパスコードを入力</h1>
+      <h1 className="mb-6 text-center text-xl font-bold text-slate-800">
+        テストのパスコードを入力 (Enter the pass code)
+      </h1>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-          パスコード
+          パスコード (Pass Code)
           <input
             className="rounded-md border border-slate-300 px-3 py-2 notranslate"
             value={passcode}
@@ -100,11 +102,15 @@ export default function StudentPasscodePage() {
           disabled={loading}
           className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? "確認中..." : "受験を開始する"}
+          {loading ? "確認中..." : "START"}
         </button>
       </form>
-      <Link href="/student/history" className="mt-4 text-center text-sm text-blue-600 hover:underline">
-        受験履歴を見る
+      <Link
+        href="/student/history"
+        className="mx-auto mt-4 rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow hover:opacity-90"
+        style={{ backgroundColor: "#D97757" }}
+      >
+        My Test Results
       </Link>
     </main>
   );
