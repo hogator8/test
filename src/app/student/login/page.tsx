@@ -39,7 +39,7 @@ export default function StudentLoginPage() {
       <h1 className="mb-6 text-center text-xl font-bold text-slate-800">学生ログイン</h1>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4 rounded-lg bg-white p-6 shadow">
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-          学生ID
+          学生ID (Student ID)
           <input
             className="rounded-md border border-slate-300 px-3 py-2 notranslate"
             value={studentId}
@@ -50,7 +50,7 @@ export default function StudentLoginPage() {
           />
         </label>
         <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-          パスワード
+          パスワード (Password)
           <input
             type="password"
             className="rounded-md border border-slate-300 px-3 py-2"
@@ -66,7 +66,7 @@ export default function StudentLoginPage() {
           disabled={loading}
           className="rounded-md bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
         >
-          {loading ? "ログイン中..." : "ログイン"}
+          {loading ? "ログイン中..." : "ログイン (Login)"}
         </button>
       </form>
     </main>
